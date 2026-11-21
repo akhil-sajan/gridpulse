@@ -1,0 +1,52 @@
+# Secrets and credentials: never commit
+.env
+.env.*
+*.pem
+*.key
+.databrickscfg
+profiles.yml.local
+.aws/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+
+# Data files (raw data lives in the landing zone, not in Git)
+data/
+*.csv
+*.parquet
+*.xml
+*.zip
+*.gz
+
+# Databricks Asset Bundles
+.databricks/
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# Terraform
+infra/terraform/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Private notes
+GridPulse_My_Notes.md

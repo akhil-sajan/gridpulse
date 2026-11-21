@@ -1,0 +1,26 @@
+# Databricks Asset Bundle for GridPulse.
+# The workspace host is not stored here: locally it comes from the CLI profile
+# (`-p gridpulse`), in CI from the DATABRICKS_HOST / DATABRICKS_TOKEN secrets.
+bundle:
+  name: gridpulse
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog catalog this target writes to
+    default: gridpulse_dev
+
+targets:
+  dev:
+    # Development mode prefixes resource names with "[dev <user>]" and pauses schedules.
+    mode: development
+    default: true
+
+  prod:
+    mode: production
+    variables:
+      catalog: gridpulse_prod
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

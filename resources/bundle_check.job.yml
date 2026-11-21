@@ -1,0 +1,12 @@
+# P0.4: smallest possible job, used to prove that the bundle deploys and runs.
+# It runs on serverless compute (no cluster defined), the only option on Free Edition.
+resources:
+  jobs:
+    bundle_check:
+      name: gridpulse_bundle_check
+      tasks:
+        - task_key: check_catalog
+          notebook_task:
+            notebook_path: ../src/setup/bundle_check.py
+            base_parameters:
+              catalog: ${var.catalog}

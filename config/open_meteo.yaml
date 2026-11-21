@@ -1,0 +1,44 @@
+# Open-Meteo weather ingestion (https://open-meteo.com). Free for non-commercial use,
+# data under CC BY 4.0. Fair-use limits: 10,000 calls/day, 5,000/hour, 600/minute,
+# where a request covering more than 14 days or 10 variables counts as several calls.
+
+archive_url: https://archive-api.open-meteo.com/v1/archive
+forecast_url: https://api.open-meteo.com/v1/forecast
+start_date: "2020-01-01"
+
+# A month counts as final this many days after it ends (reanalysis data arrives with
+# a delay of a few days). Until then it is re-downloaded on every run.
+final_after_days: 7
+
+# Hourly variables, all times in UTC (the API default).
+variables:
+  - shortwave_radiation   # W/m², drives solar output
+  - cloud_cover           # %, total cloud cover
+  - wind_speed_100m       # km/h at roughly wind-turbine hub height
+  - temperature_2m        # °C
+
+forecast_days: 3          # today + 2 days, covers the next 48 hours
+
+# Stay below the API limits with a safety margin (weighted calls).
+budget_per_minute: 480
+budget_per_run: 8000
+
+# One point per German federal state (the state capital, approximate coordinates).
+# Phase 3 replaces equal weighting with installed-capacity weighting per state.
+locations:
+  - {code: de_bw, state: Baden-Württemberg, city: Stuttgart, lat: 48.7758, lon: 9.1829}
+  - {code: de_by, state: Bayern, city: München, lat: 48.1351, lon: 11.5820}
+  - {code: de_be, state: Berlin, city: Berlin, lat: 52.5200, lon: 13.4050}
+  - {code: de_bb, state: Brandenburg, city: Potsdam, lat: 52.3906, lon: 13.0645}
+  - {code: de_hb, state: Bremen, city: Bremen, lat: 53.0793, lon: 8.8017}
+  - {code: de_hh, state: Hamburg, city: Hamburg, lat: 53.5511, lon: 9.9937}
+  - {code: de_he, state: Hessen, city: Wiesbaden, lat: 50.0782, lon: 8.2398}
+  - {code: de_mv, state: Mecklenburg-Vorpommern, city: Schwerin, lat: 53.6355, lon: 11.4012}
+  - {code: de_ni, state: Niedersachsen, city: Hannover, lat: 52.3759, lon: 9.7320}
+  - {code: de_nw, state: Nordrhein-Westfalen, city: Düsseldorf, lat: 51.2277, lon: 6.7735}
+  - {code: de_rp, state: Rheinland-Pfalz, city: Mainz, lat: 49.9929, lon: 8.2473}
+  - {code: de_sl, state: Saarland, city: Saarbrücken, lat: 49.2402, lon: 6.9969}
+  - {code: de_sn, state: Sachsen, city: Dresden, lat: 51.0504, lon: 13.7373}
+  - {code: de_st, state: Sachsen-Anhalt, city: Magdeburg, lat: 52.1205, lon: 11.6276}
+  - {code: de_sh, state: Schleswig-Holstein, city: Kiel, lat: 54.3233, lon: 10.1228}
+  - {code: de_th, state: Thüringen, city: Erfurt, lat: 50.9848, lon: 11.0299}

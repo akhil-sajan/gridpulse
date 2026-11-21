@@ -1,0 +1,35 @@
+# SMARD series to ingest (Bundesnetzagentur, https://www.smard.de).
+# API: /app/chart_data/{filter}/{region}/index_{resolution}.json lists weekly file
+# timestamps; /app/chart_data/{filter}/{region}/{filter}_{region}_{resolution}_{ts}.json
+# returns one week of data. Filter IDs follow the community spec at
+# https://github.com/bundesAPI/smard-api.
+
+base_url: https://www.smard.de/app/chart_data
+start_date: "2020-01-01"
+# A weekly file counts as final this many days after the week ended; until then it is
+# re-downloaded on every run because SMARD keeps filling and revising it.
+final_after_days: 2
+
+series:
+  # dataset: generation (region DE, 15-minute values in MWh)
+  - {dataset: generation, name: lignite, filter: 1223, region: DE, resolutions: [quarterhour]}
+  - {dataset: generation, name: nuclear, filter: 1224, region: DE, resolutions: [quarterhour]}
+  - {dataset: generation, name: wind_offshore, filter: 1225, region: DE, resolutions: [quarterhour]}
+  - {dataset: generation, name: hydro, filter: 1226, region: DE, resolutions: [quarterhour]}
+  - {dataset: generation, name: other_conventional, filter: 1227, region: DE, resolutions: [quarterhour]}
+  - {dataset: generation, name: other_renewable, filter: 1228, region: DE, resolutions: [quarterhour]}
+  - {dataset: generation, name: biomass, filter: 4066, region: DE, resolutions: [quarterhour]}
+  - {dataset: generation, name: wind_onshore, filter: 4067, region: DE, resolutions: [quarterhour]}
+  - {dataset: generation, name: solar, filter: 4068, region: DE, resolutions: [quarterhour]}
+  - {dataset: generation, name: hard_coal, filter: 4069, region: DE, resolutions: [quarterhour]}
+  - {dataset: generation, name: pumped_storage, filter: 4070, region: DE, resolutions: [quarterhour]}
+  - {dataset: generation, name: natural_gas, filter: 4071, region: DE, resolutions: [quarterhour]}
+
+  # dataset: consumption (region DE)
+  - {dataset: consumption, name: grid_load, filter: 410, region: DE, resolutions: [quarterhour]}
+  - {dataset: consumption, name: residual_load, filter: 4359, region: DE, resolutions: [quarterhour]}
+
+  # dataset: prices (day-ahead, bidding zone DE-LU, EUR/MWh).
+  # Hourly for the full history; quarter-hourly where SMARD publishes it (the
+  # day-ahead market moved to 15-minute products in 2025). Silver combines both.
+  - {dataset: prices, name: day_ahead, filter: 4169, region: DE-LU, resolutions: [hour, quarterhour]}

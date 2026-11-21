@@ -87,9 +87,38 @@ def test_upload_overwrite_replaces_file(local_settings):
     assert writer._local(result.path).read_bytes() == b"[2]"
 
 
+def test_local_writer_lists_files_recursively(tmp_path):
+    writer = LocalLandingWriter(tmp_path)
+    assert writer.list_files(f"{ROOT}/x") == []
+    writer.write(f"{ROOT}/x/a/ingest_date=2026-11-21/1.json", b"1")
+    writer.write(f"{ROOT}/x/b/ingest_date=2026-11-22/2.json", b"2")
+    assert writer.list_files(f"{ROOT}/x") == [
+        f"{ROOT}/x/a/ingest_date=2026-11-21/1.json",
+        f"{ROOT}/x/b/ingest_date=2026-11-22/2.json",
+    ]
+
+
+class FakeEntry:
+    def __init__(self, path, is_directory):
+        self.path = path
+        self.is_directory = is_directory
+
+
 class FakeFilesApi:
     def __init__(self):
         self.store = {}
+
+    def list_directory_contents(self, directory):
+        prefix = directory.rstrip("/") + "/"
+        children = {}
+        for path in self.store:
+            if path.startswith(prefix):
+                rest = path[len(prefix) :]
+                head = rest.split("/", 1)[0]
+                children[prefix + head] = "/" in rest
+        if not children:
+            raise NotFound(directory)
+        return [FakeEntry(p + ("/" if is_dir else ""), is_dir) for p, is_dir in children.items()]
 
     def get_metadata(self, path):
         if path not in self.store:
@@ -113,6 +142,8 @@ def test_volume_writer_uses_files_api():
     path = f"{ROOT}/x/y/ingest_date=2026-11-21/f.json"
 
     assert writer.exists(path) is False
+    assert writer.list_files(f"{ROOT}/x") == []
     writer.write(path, b"data")
     assert writer.exists(path) is True
     assert client.files.store[path] == b"data"
+    assert writer.list_files(f"{ROOT}/x") == [path]

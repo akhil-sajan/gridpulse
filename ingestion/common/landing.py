@@ -58,6 +58,10 @@ class LandingWriter(Protocol):
 
     def write(self, path: str, data: bytes, overwrite: bool = False) -> None: ...
 
+    def list_files(self, directory: str) -> list[str]:
+        """All file paths under ``directory`` (recursive); empty if it doesn't exist."""
+        ...
+
 
 class LocalLandingWriter:
     """Writes ``/Volumes/...`` paths under a local base folder."""
@@ -77,6 +81,14 @@ class LocalLandingWriter:
             raise FileExistsError(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
+
+    def list_files(self, directory: str) -> list[str]:
+        base = self._local(directory)
+        if not base.is_dir():
+            return []
+        return sorted(
+            "/" + p.relative_to(self.base_dir).as_posix() for p in base.rglob("*") if p.is_file()
+        )
 
 
 class VolumeLandingWriter:
@@ -100,6 +112,24 @@ class VolumeLandingWriter:
 
     def write(self, path: str, data: bytes, overwrite: bool = False) -> None:
         self.client.files.upload(path, io.BytesIO(data), overwrite=overwrite)
+
+    def list_files(self, directory: str) -> list[str]:
+        from databricks.sdk.errors import NotFound
+
+        found: list[str] = []
+        pending = [directory.rstrip("/")]
+        while pending:
+            current = pending.pop()
+            try:
+                entries = list(self.client.files.list_directory_contents(current))
+            except NotFound:
+                continue
+            for entry in entries:
+                if entry.is_directory:
+                    pending.append(entry.path.rstrip("/"))
+                else:
+                    found.append(entry.path)
+        return sorted(found)
 
 
 def make_writer(settings: Settings) -> LandingWriter:

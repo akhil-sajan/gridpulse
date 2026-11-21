@@ -1,0 +1,20 @@
+# Shared settings for the GridPulse ingestion scripts.
+# Secrets never go here: credentials come from environment variables
+# (locally from your shell or CLI profiles, in CI from GitHub secrets).
+
+environments:
+  dev:
+    catalog: gridpulse_dev
+  prod:
+    catalog: gridpulse_prod
+
+landing:
+  schema: bronze
+  volume: landing
+
+http:
+  timeout_seconds: 30
+  max_attempts: 5
+  backoff_base_seconds: 1.0
+  backoff_max_seconds: 60.0
+  user_agent: "GridPulse/0.1 (+https://github.com/akhil-sajan/gridpulse)"

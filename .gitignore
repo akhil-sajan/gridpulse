@@ -50,3 +50,6 @@ Thumbs.db
 
 # Private notes
 GridPulse_My_Notes.md
+
+# Local landing backend (GRIDPULSE_LANDING_BACKEND=local)
+.landing/

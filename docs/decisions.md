@@ -22,3 +22,11 @@ A running record of choices made while building GridPulse, and why.
 - **Layout:** one repository for ingestion, pipelines, dbt, infrastructure and docs, deployed with a Databricks Asset Bundle (from P0.4).
 - **Quality gates:** `ruff` (lint and format) and `pytest` run on every push and pull request.
 - **Python:** 3.11, matching Databricks serverless.
+
+## P0.4 – Databricks Asset Bundle (2026-11-21)
+
+- **Deployment:** all Databricks resources are defined in the repo (`databricks.yml`, `resources/`) and deployed with the Databricks CLI, never created by hand in the UI.
+- **Targets:** `dev` (default, development mode: resources prefixed with the user's name, schedules paused) and `prod` (production mode). A `catalog` variable points each target at `gridpulse_dev` or `gridpulse_prod`.
+- **No host in the repo:** the workspace URL comes from the local CLI profile, or from CI secrets later, so the bundle works for any workspace.
+- **Compute:** jobs define no cluster and run on serverless compute, the only option on Free Edition.
+- **Verified:** `bundle validate` and `bundle deploy -t dev` succeeded, and the `bundle_check` job ran on serverless and found all five schemas in `gridpulse_dev`.

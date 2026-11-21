@@ -117,3 +117,10 @@ A running record of choices made while building GridPulse, and why.
 - **Lesson from real data:** the first run failed the completeness check because SMARD's nuclear series ends in late January 2024 (Germany's last nuclear plants closed in April 2023; SMARD kept publishing zeros for a while). Completeness is now measured within each series' active range instead of assuming every series covers the whole year.
 - **Observation:** SMARD publishes a quarter-hourly day-ahead price series for the full history, not only since the move to 15-minute day-ahead products in 2025. To be verified in P2.5 before choosing the price series for gold.
 - **Verified:** silver checks passed with 0 quarantined rows. Row counts: smard_generation 2,803,104; smard_consumption 483,601; smard_prices 302,160; openmeteo_weather 966,144; openmeteo_forecast 2,304.
+
+## P2.2 + P2.3 – Production categories and national weather (2026-11-21)
+
+- **No unpivot needed:** the plan assumed one column per source, but SMARD already delivers one series per source, so silver is long format from the start (`series_name`, `ts_utc`, `value`).
+- **Categories as reference data:** `silver.ref_production_type` maps each of the 12 generation series to `renewable`, `fossil`, `nuclear` or `storage`, with `is_renewable` and `is_weather_dependent` (solar and wind) flags and German and English names. Pumped storage is `storage`, not generation, because it shifts energy in time; "other conventional" (oil, mixed fuels, non-renewable waste) counts as `fossil`. The mapping lives in the pipeline code and a contract test checks it covers exactly the configured series.
+- **National weather:** `silver.weather_national_hourly` averages the 16 state locations per UTC hour (equal weights; Phase 3 switches to installed-capacity weights) and carries `n_locations` so incomplete hours are visible. Weather stays hourly; aligning it to 15-minute energy data happens in gold.
+- **Verified:** silver checks passed: every generation series has a category, the national weather has one row per hour (60,384 rows) and every 2024 hour is built from all 16 locations.

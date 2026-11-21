@@ -70,3 +70,12 @@ A running record of choices made while building GridPulse, and why.
 - **No state file:** what has been landed is read from the landing zone itself (file listing), so the landing zone is the single source of truth.
 - **Robustness:** downloads run in parallel (default 4 workers); a failed file is recorded and reported without stopping the run; a missing index (HTTP 404) is skipped.
 - **Verified:** full backfill landed 5,579 final and 15 partial files with 0 errors; a second run planned only the 15 open weeks. Nuclear has no open week because Germany's last nuclear plants closed in April 2023.
+
+## P1.3 – Open-Meteo weather (2026-11-21)
+
+- **Locations:** one point per German federal state (the state capital), 16 in total, in `config/open_meteo.yaml`. Equal weighting for now; Phase 3 weights states by installed capacity.
+- **Variables (hourly, UTC):** shortwave radiation, cloud cover, wind speed at 100 m (around wind-turbine hub height), temperature at 2 m.
+- **Archive:** one request per location and calendar month since 2020-01-01. A month is final 7 days after it ends (reanalysis data arrives with a delay); final months are landed once and skipped afterwards, recent months are re-downloaded and landed with a `_partial_<fetch time>` suffix.
+- **Forecast:** next ~48 hours (`forecast_days: 3`) for every location, one file per location and fetch time.
+- **API limits:** each request's weight is computed (more than 14 days or 10 variables count as several calls), requests are paced to 480 weighted calls per minute (limit 600) and each run is capped at 8,000 (daily limit 10,000). Work that doesn't fit is deferred to the next run.
+- **Verified:** full archive landed 1,328 files (1,312 final, 16 partial) with 0 errors using 2,875 weighted calls; a rerun fetched only the 16 current-month files; the forecast landed 16 files.

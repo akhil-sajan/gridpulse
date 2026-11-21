@@ -91,3 +91,16 @@ A running record of choices made while building GridPulse, and why.
 - **Isolation:** one job per ingester, so a failing source doesn't block the others; concurrency groups prevent overlapping runs of the same job.
 - **Known GitHub behaviour:** schedules in public repositories are disabled after 60 days without repository activity; any push re-enables them.
 - **Verified:** a manual run of all three jobs succeeded (SMARD 15 open weeks, forecast 16 files, archive 16 files, 0 errors, each job under a minute).
+
+## P1.5 – Bronze layer (2026-11-21)
+
+- **Engine:** a serverless, triggered Lakeflow declarative pipeline (`gridpulse_bronze`) with Auto Loader streaming tables, defined in `src/bronze/bronze_pipeline.py` and deployed by the bundle.
+- **Tables (schema `bronze`):** `smard_generation`, `smard_consumption`, `smard_prices`, `openmeteo_archive`, `openmeteo_forecast`. One row per landed file.
+- **Raw payload, explicit schema:** each source's JSON structure is declared up front instead of inferred, so types are stable from the first file; fields the schema doesn't know go to `_rescued_data` (schema evolution mode `rescue`) instead of failing the load.
+- **Lineage columns:** `_source_file`, `_file_name`, `_file_modified_at`, `_ingest_date`, `_ingested_at`, plus what the file name says: series, filter, region, resolution and week start for SMARD; location and month for Open-Meteo; whether the file is partial and when it was fetched.
+- **Data quality at bronze:** a warn-only expectation that every file name is recognised. Dropping and quarantining rows belongs in silver.
+- **Reconciliation:** `src/setup/bronze_check.py` runs after every refresh and fails the job unless each table holds exactly one row per landed file, with no unrecognised names.
+- **Contract test:** a unit test checks that the file names the ingesters produce match the regex patterns bronze parses.
+- **Schedule:** daily job at 05:15 UTC (pipeline, then reconciliation). Paused in the dev target by development mode; runs on schedule once deployed to prod.
+- **File discovery:** directory listing for now; the external location also supports managed file events, an option once file counts grow.
+- **Verified:** first run loaded all 7,036 files (SMARD 4,196 + 724 + 724, Open-Meteo 1,360 + 32); reconciliation passed with 0 unrecognised names and 0 rescued rows.

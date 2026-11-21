@@ -104,3 +104,16 @@ A running record of choices made while building GridPulse, and why.
 - **Schedule:** daily job at 05:15 UTC (pipeline, then reconciliation). Paused in the dev target by development mode; runs on schedule once deployed to prod.
 - **File discovery:** directory listing for now; the external location also supports managed file events, an option once file counts grow.
 - **Verified:** first run loaded all 7,036 files (SMARD 4,196 + 724 + 724, Open-Meteo 1,360 + 32); reconciliation passed with 0 unrecognised names and 0 rescued rows.
+
+## P2.1 – Silver layer (2026-11-21)
+
+- **Same pipeline as bronze** (`gridpulse_medallion`): Free Edition allows one active pipeline per type, and one pipeline lets Databricks order bronze and silver from their dependencies. Silver tables are published to the `silver` schema by their full names.
+- **Unpacking:** each bronze row (a week or month of values in arrays) becomes one row per interval. Values the source hasn't published yet (nulls in open weeks and months) are not rows.
+- **Time:** every key is a UTC instant (`ts_utc`, interval start). German local time and date (`ts_local`, `local_date`, Europe/Berlin) are derived attributes. The pipeline's session time zone is set to UTC so nothing depends on cluster defaults. Local days have 92, 96 or 100 quarter-hours; the rules live in `src/utils/timeutils.py` with unit tests and are checked on real data.
+- **Latest version wins, incrementally:** AUTO CDC (SCD type 1) keyed by `(series_name, resolution, ts_utc)` for SMARD and `(location_code, ts_utc)` for weather, sequenced by the file's landing time. Partial files for open weeks and months are superseded by later partials and finally by the final file, without reprocessing history.
+- **Forecasts keep every run** (`openmeteo_forecast`, key `(location_code, fetched_at, ts_utc)`, with `lead_hours`) so forecast accuracy can be measured later.
+- **Quality rules** (`expect_all_or_drop`, a rule evaluating to NULL counts as failed): timestamps present and aligned to the resolution; generation and grid load non-negative (residual load may be negative); prices within the EU day-ahead limits of -500 to 4,000 EUR/MWh; radiation and wind non-negative, cloud cover 0–100 %, temperature between -50 and 50 °C. Rows that fail go to `smard_quarantine` / `openmeteo_quarantine` with the names of the rules they broke.
+- **Checks after every refresh** (`src/setup/silver_check.py`): unique keys; no gaps in 2024 between each series' first and last value; correct quarter-hours per German local day; every weather location complete for 2024.
+- **Lesson from real data:** the first run failed the completeness check because SMARD's nuclear series ends in late January 2024 (Germany's last nuclear plants closed in April 2023; SMARD kept publishing zeros for a while). Completeness is now measured within each series' active range instead of assuming every series covers the whole year.
+- **Observation:** SMARD publishes a quarter-hourly day-ahead price series for the full history, not only since the move to 15-minute day-ahead products in 2025. To be verified in P2.5 before choosing the price series for gold.
+- **Verified:** silver checks passed with 0 quarantined rows. Row counts: smard_generation 2,803,104; smard_consumption 483,601; smard_prices 302,160; openmeteo_weather 966,144; openmeteo_forecast 2,304.

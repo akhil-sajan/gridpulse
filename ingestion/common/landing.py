@@ -17,6 +17,7 @@ Two writers share one interface:
 from __future__ import annotations
 
 import io
+import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -95,6 +96,9 @@ class VolumeLandingWriter:
     """Writes to a Unity Catalog volume through the Databricks Files API."""
 
     def __init__(self, client: Any | None = None) -> None:
+        # On Free Edition the SDK's attempt to use presigned upload URLs returns 403 and it
+        # falls back to the standard Files API. Uploads work; hide the noisy warning.
+        logging.getLogger("databricks.sdk.mixins.files").setLevel(logging.ERROR)
         if client is None:
             from databricks.sdk import WorkspaceClient
 

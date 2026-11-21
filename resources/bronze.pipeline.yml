@@ -1,8 +1,11 @@
-# P1.5: bronze layer. Auto Loader reads the landing volume into streaming tables.
+# Bronze (P1.5) and silver (P2.1) in one serverless, triggered pipeline.
+# Free Edition allows one active pipeline per type, and keeping both layers in one
+# pipeline lets Databricks order the steps from the table dependencies.
+# (The resource key stays "bronze" so the existing pipeline and its tables are kept.)
 resources:
   pipelines:
     bronze:
-      name: gridpulse_bronze
+      name: gridpulse_medallion
       catalog: ${var.catalog}
       schema: bronze
       serverless: true
@@ -11,24 +14,35 @@ resources:
       libraries:
         - file:
             path: ../src/bronze/bronze_pipeline.py
+        - file:
+            path: ../src/silver/silver_pipeline.py
       configuration:
+        gridpulse.catalog: ${var.catalog}
         gridpulse.landing_root: /Volumes/${var.catalog}/bronze/landing
+        spark.sql.session.timeZone: UTC
 
   jobs:
     bronze_refresh:
-      name: gridpulse_bronze_refresh
+      name: gridpulse_refresh
       # Daily after the 04:23 UTC ingestion. Paused automatically in the dev target.
       schedule:
         quartz_cron_expression: "0 15 5 * * ?"
         timezone_id: UTC
       tasks:
-        - task_key: refresh_bronze
+        - task_key: refresh_pipeline
           pipeline_task:
             pipeline_id: ${resources.pipelines.bronze.id}
         - task_key: reconcile_bronze
           depends_on:
-            - task_key: refresh_bronze
+            - task_key: refresh_pipeline
           notebook_task:
             notebook_path: ../src/setup/bronze_check.py
+            base_parameters:
+              catalog: ${var.catalog}
+        - task_key: check_silver
+          depends_on:
+            - task_key: refresh_pipeline
+          notebook_task:
+            notebook_path: ../src/setup/silver_check.py
             base_parameters:
               catalog: ${var.catalog}

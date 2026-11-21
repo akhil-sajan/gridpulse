@@ -79,3 +79,15 @@ A running record of choices made while building GridPulse, and why.
 - **Forecast:** next ~48 hours (`forecast_days: 3`) for every location, one file per location and fetch time.
 - **API limits:** each request's weight is computed (more than 14 days or 10 variables count as several calls), requests are paced to 480 weighted calls per minute (limit 600) and each run is capped at 8,000 (daily limit 10,000). Work that doesn't fit is deferred to the next run.
 - **Verified:** full archive landed 1,328 files (1,312 final, 16 partial) with 0 errors using 2,875 weighted calls; a rerun fetched only the 16 current-month files; the forecast landed 16 files.
+
+## P1.4 – Scheduled ingestion (2026-11-21)
+
+- **Where:** GitHub Actions (`.github/workflows/ingest_batch.yml`), outside Databricks, free for public repositories.
+- **Schedule (UTC):** Open-Meteo forecast every 3 hours; SMARD and Open-Meteo archive daily at 04:23. Minutes are off the hour because GitHub delays jobs scheduled at :00.
+- **Why daily for SMARD (not monthly as first planned):** SMARD adds data to the current week every day; the ingester only re-downloads open weeks, so a daily run is cheap (about 15 files).
+- **Why every 3 hours for the forecast (not hourly):** weather models refresh every few hours, and hourly runs would create about 140,000 small files a year for little benefit.
+- **Credentials:** `DATABRICKS_HOST` and a 90-day Databricks personal access token in GitHub repository secrets; the Databricks SDK reads them from the environment. Free Edition has no account console for service principals, so a token is the practical option. Rotate before it expires.
+- **Writes to:** the dev landing volume (`GRIDPULSE_ENV=dev`). Switch to prod when the prod deployment is in place (P5.5).
+- **Isolation:** one job per ingester, so a failing source doesn't block the others; concurrency groups prevent overlapping runs of the same job.
+- **Known GitHub behaviour:** schedules in public repositories are disabled after 60 days without repository activity; any push re-enables them.
+- **Verified:** a manual run of all three jobs succeeded (SMARD 15 open weeks, forecast 16 files, archive 16 files, 0 errors, each job under a minute).

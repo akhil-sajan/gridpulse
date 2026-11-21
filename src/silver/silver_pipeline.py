@@ -269,3 +269,75 @@ def openmeteo_quarantine():
         .where(~all_pass(WEATHER_RULES))
         .withColumn("_quarantined_at", F.current_timestamp())
     )
+
+
+# --------------------------------------------------------------------- reference data (P2.2)
+
+# One row per SMARD generation series. Categories follow how SMARD groups sources:
+# renewable, fossil (incl. "other conventional": oil, mixed fuels, non-renewable waste),
+# nuclear, and storage (pumped storage moves energy in time rather than producing it).
+PRODUCTION_TYPES = [
+    # series_name, filter, English name, German name, category, renewable, weather-dependent
+    ("solar", 4068, "Solar", "Photovoltaik", "renewable", True, True),
+    ("wind_onshore", 4067, "Wind onshore", "Wind Onshore", "renewable", True, True),
+    ("wind_offshore", 1225, "Wind offshore", "Wind Offshore", "renewable", True, True),
+    ("biomass", 4066, "Biomass", "Biomasse", "renewable", True, False),
+    ("hydro", 1226, "Hydropower", "Wasserkraft", "renewable", True, False),
+    ("other_renewable", 1228, "Other renewable", "Sonstige Erneuerbare", "renewable", True, False),
+    ("lignite", 1223, "Lignite", "Braunkohle", "fossil", False, False),
+    ("hard_coal", 4069, "Hard coal", "Steinkohle", "fossil", False, False),
+    ("natural_gas", 4071, "Natural gas", "Erdgas", "fossil", False, False),
+    (
+        "other_conventional",
+        1227,
+        "Other conventional",
+        "Sonstige Konventionelle",
+        "fossil",
+        False,
+        False,
+    ),
+    ("nuclear", 1224, "Nuclear", "Kernenergie", "nuclear", False, False),
+    ("pumped_storage", 4070, "Pumped storage", "Pumpspeicher", "storage", False, False),
+]
+
+
+@dlt.table(
+    name=silver("ref_production_type"),
+    comment=(
+        "Reference: SMARD generation series -> category (renewable, fossil, nuclear, storage), "
+        "renewable flag and weather dependence."
+    ),
+    table_properties={"quality": "silver"},
+)
+def ref_production_type():
+    return spark.createDataFrame(
+        PRODUCTION_TYPES,
+        "series_name STRING, smard_filter_id INT, name_en STRING, name_de STRING, "
+        "category STRING, is_renewable BOOLEAN, is_weather_dependent BOOLEAN",
+    )
+
+
+# ------------------------------------------------------------------- national weather (P2.3)
+
+
+@dlt.table(
+    name=silver("weather_national_hourly"),
+    comment=(
+        "Germany-wide hourly weather: plain average over the 16 state locations "
+        "(capacity weighting follows in Phase 3). Hourly, UTC; energy data is 15-minute."
+    ),
+    table_properties={"quality": "silver"},
+)
+def weather_national_hourly():
+    return (
+        spark.read.table(silver("openmeteo_weather"))
+        .groupBy("ts_utc")
+        .agg(
+            F.avg("shortwave_radiation").alias("shortwave_radiation"),
+            F.avg("cloud_cover").alias("cloud_cover"),
+            F.avg("wind_speed_100m").alias("wind_speed_100m"),
+            F.avg("temperature_2m").alias("temperature_2m"),
+            F.count("*").alias("n_locations"),
+        )
+        .transform(with_local_time)
+    )

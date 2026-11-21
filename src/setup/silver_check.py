@@ -9,7 +9,9 @@
 # MAGIC 3. every German local day in 2024 has the right number of quarter-hours
 # MAGIC    (92 on 31 March, 100 on 27 October, 96 otherwise), ignoring each series' partial
 # MAGIC    first and last day,
-# MAGIC 4. every weather location has all 8,784 hours of 2024.
+# MAGIC 4. every weather location has all 8,784 hours of 2024,
+# MAGIC 5. every generation series has a category, and the national weather has one row
+# MAGIC    per hour built from all 16 locations.
 # MAGIC Quarantine counts are reported but don't fail the job.
 
 # COMMAND ----------
@@ -163,8 +165,37 @@ check(
 
 # COMMAND ----------
 
-print("\n5. Row counts and quarantine (informational)")
-for table in [*KEYS, "smard_quarantine", "openmeteo_quarantine"]:
+print("\n5. Reference data and national weather (P2.2, P2.3)")
+check(
+    "generation series without a category",
+    f"""SELECT count(DISTINCT g.series_name) FROM {s}.smard_generation g
+        LEFT ANTI JOIN {s}.ref_production_type r ON g.series_name = r.series_name""",
+)
+check(
+    "categories outside renewable/fossil/nuclear/storage",
+    f"""SELECT count(*) FROM {s}.ref_production_type
+        WHERE category NOT IN ('renewable', 'fossil', 'nuclear', 'storage')""",
+)
+check(
+    "duplicate hours in weather_national_hourly",
+    f"""SELECT count(*) - count(DISTINCT ts_utc) FROM {s}.weather_national_hourly""",
+)
+check(
+    "2024 hours in weather_national_hourly not built from all 16 locations",
+    f"""SELECT 8784 - count_if(n_locations = 16) FROM {s}.weather_national_hourly
+        WHERE year(ts_utc) = 2024""",
+)
+
+# COMMAND ----------
+
+print("\n6. Row counts and quarantine (informational)")
+for table in [
+    *KEYS,
+    "ref_production_type",
+    "weather_national_hourly",
+    "smard_quarantine",
+    "openmeteo_quarantine",
+]:
     n = spark.sql(f"SELECT count(*) FROM {s}.{table}").first()[0]
     print(f"      {table:22} {n:>12,}")
 for r in spark.sql(

@@ -1,0 +1,34 @@
+# P1.5: bronze layer. Auto Loader reads the landing volume into streaming tables.
+resources:
+  pipelines:
+    bronze:
+      name: gridpulse_bronze
+      catalog: ${var.catalog}
+      schema: bronze
+      serverless: true
+      continuous: false
+      channel: CURRENT
+      libraries:
+        - file:
+            path: ../src/bronze/bronze_pipeline.py
+      configuration:
+        gridpulse.landing_root: /Volumes/${var.catalog}/bronze/landing
+
+  jobs:
+    bronze_refresh:
+      name: gridpulse_bronze_refresh
+      # Daily after the 04:23 UTC ingestion. Paused automatically in the dev target.
+      schedule:
+        quartz_cron_expression: "0 15 5 * * ?"
+        timezone_id: UTC
+      tasks:
+        - task_key: refresh_bronze
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.bronze.id}
+        - task_key: reconcile_bronze
+          depends_on:
+            - task_key: refresh_bronze
+          notebook_task:
+            notebook_path: ../src/setup/bronze_check.py
+            base_parameters:
+              catalog: ${var.catalog}

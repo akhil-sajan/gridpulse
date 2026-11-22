@@ -1,0 +1,68 @@
+# Daily job: download new SMARD and weather data, refresh bronze and silver, check.
+# (The resource key stays "bronze_refresh" so the existing job is kept.)
+resources:
+  jobs:
+    bronze_refresh:
+      name: gridpulse_refresh
+      # Daily: download new SMARD and weather data, then refresh bronze and silver, then check.
+      schedule:
+        quartz_cron_expression: "0 30 4 * * ?"
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      max_concurrent_runs: 1
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      environments:
+        - environment_key: ingest
+          spec:
+            environment_version: "2"
+            dependencies:
+              - requests>=2.32,<3
+              - pyyaml>=6,<7
+              - databricks-sdk>=0.40
+      tasks:
+        - task_key: ingest_smard
+          environment_key: ingest
+          timeout_seconds: 3600
+          spark_python_task:
+            python_file: ../src/jobs/run_ingester.py
+            parameters:
+              - ${workspace.file_path}
+              - ${var.env}
+              - ingestion.batch.smard
+              - --workers
+              - "4"
+        - task_key: ingest_open_meteo_archive
+          environment_key: ingest
+          timeout_seconds: 3600
+          spark_python_task:
+            python_file: ../src/jobs/run_ingester.py
+            parameters:
+              - ${workspace.file_path}
+              - ${var.env}
+              - ingestion.batch.open_meteo
+              - archive
+        - task_key: refresh_pipeline
+          # Run even if one download failed, so the other source still gets processed;
+          # the job is still marked failed and the failure email is sent.
+          run_if: ALL_DONE
+          depends_on:
+            - task_key: ingest_smard
+            - task_key: ingest_open_meteo_archive
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.bronze.id}
+        - task_key: reconcile_bronze
+          depends_on:
+            - task_key: refresh_pipeline
+          notebook_task:
+            notebook_path: ../src/setup/bronze_check.py
+            base_parameters:
+              catalog: ${var.catalog}
+        - task_key: check_silver
+          depends_on:
+            - task_key: refresh_pipeline
+          notebook_task:
+            notebook_path: ../src/setup/silver_check.py
+            base_parameters:
+              catalog: ${var.catalog}

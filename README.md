@@ -19,6 +19,12 @@ GridPulse combines live grid data, weather, historical market data, a power-plan
 | Serving | AI/BI dashboards, Genie |
 | DevOps | Databricks Asset Bundles, Terraform (AWS), pytest, ruff |
 
+## Data lineage (dbt)
+
+Silver tables (green) flow through staging views into the gold star schema and the answer tables:
+
+![dbt lineage graph](docs/img/dbt_lineage.png)
+
 ## Repository layout
 
 ```

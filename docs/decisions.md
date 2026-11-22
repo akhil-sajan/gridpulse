@@ -160,3 +160,11 @@ A running record of choices made while building GridPulse, and why.
 - **Tests (40):** unique and not-null keys, relationships from every fact to its dimensions, accepted values (categories, weekdays, price resolution), value ranges (`dbt_expectations`: generation ≥ 0, grid load ≥ 0, price -500 to 4,000, cloud cover 0–100), and a singular test that joining generation, price and weather for one day doesn't multiply rows.
 - **Lesson:** the repo ignores `*.csv` to keep raw data out of Git, which also hid the seed files; CI caught it and seeds are now explicitly allowed.
 - **Verified:** first `dbt build`: 54 of 54 passed (14 objects built, 40 tests) in about 60 seconds.
+
+## P2.6 – Gold aggregates and docs (2026-11-22)
+
+- **Answer tables in gold:** `agg_renewable_share_daily` (business question 1, one row per German day, with a completeness flag based on 92/96/100 quarter-hours) and `agg_negative_price_hours` (business question 2, one row per UTC hour with at least one negative quarter-hour, with generation mix, load and national weather). Both are full rebuilds; they are small.
+- **Definitions:** renewable share = renewable generation / total generation (pumped storage included in the total); renewable share of load = renewable generation / grid load (can exceed 1). From October 2025 an hour counts as negative if any of its quarter-hours is negative.
+- **Docs:** model and column descriptions are persisted to Unity Catalog; `dbt docs generate` produces the docs site and lineage graph (`docs/img/dbt_lineage.png`, shown in the README).
+- **Validation against official figures:** negative-price hours match the Bundesnetzagentur's published counts exactly for 2022 (69), 2023 (301) and 2024 (457), and the 2024 minimum price (-135.45 EUR/MWh) matches. The 2024 renewable share (58.5 %) is 0.5 points below the official 59.0 % because pumped storage is counted in total generation here.
+- **Verified:** `dbt build` 66 of 66 passed (16 models and seeds, 50 tests) in about 68 seconds. Each business question is answered by one short query on an answer table.

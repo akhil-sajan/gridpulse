@@ -1,0 +1,36 @@
+version: 2
+
+sources:
+  - name: silver
+    description: Clean, deduplicated tables built by the Lakeflow pipeline (bronze -> silver).
+    database: "{{ target.catalog }}"
+    schema: silver
+    config:
+      # Freshness = when the newest landed file behind a table arrived.
+      loaded_at_field: _file_modified_at
+      freshness:
+        warn_after: {count: 2, period: day}
+        error_after: {count: 4, period: day}
+    tables:
+      - name: smard_generation
+        description: SMARD generation per series and 15-minute interval (UTC), MWh.
+      - name: smard_consumption
+        description: SMARD grid load and residual load per 15-minute interval (UTC), MWh.
+      - name: smard_prices
+        description: SMARD day-ahead prices DE-LU per hour and quarter-hour (UTC), EUR/MWh.
+      - name: openmeteo_weather
+        description: Observed hourly weather per state location (UTC).
+      - name: openmeteo_forecast
+        description: Hourly weather forecasts per location and fetch time.
+        config:
+          freshness:
+            warn_after: {count: 12, period: hour}
+            error_after: {count: 1, period: day}
+      - name: ref_production_type
+        description: Generation series -> category (renewable, fossil, nuclear, storage).
+        config:
+          freshness: null
+      - name: weather_national_hourly
+        description: Germany-wide hourly weather, average of the 16 state locations.
+        config:
+          freshness: null

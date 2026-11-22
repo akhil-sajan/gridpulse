@@ -1,0 +1,26 @@
+# Connection to the Databricks SQL warehouse. No secrets in this file: everything comes
+# from environment variables (locally from your shell, in CI from repository secrets).
+#
+#   DATABRICKS_HOST       https://dbc-....cloud.databricks.com
+#   DATABRICKS_HTTP_PATH  /sql/1.0/warehouses/<id>   (SQL Warehouses -> Connection details)
+#   DATABRICKS_TOKEN      a Databricks personal access token
+#   DBT_TARGET            dev (default) or prod
+gridpulse:
+  target: "{{ env_var('DBT_TARGET', 'dev') }}"
+  outputs:
+    dev:
+      type: databricks
+      catalog: gridpulse_dev
+      schema: gold
+      host: "{{ env_var('DATABRICKS_HOST') | replace('https://', '') | replace('/', '') }}"
+      http_path: "{{ env_var('DATABRICKS_HTTP_PATH') }}"
+      token: "{{ env_var('DATABRICKS_TOKEN') }}"
+      threads: 4
+    prod:
+      type: databricks
+      catalog: gridpulse_prod
+      schema: gold
+      host: "{{ env_var('DATABRICKS_HOST') | replace('https://', '') | replace('/', '') }}"
+      http_path: "{{ env_var('DATABRICKS_HTTP_PATH') }}"
+      token: "{{ env_var('DATABRICKS_TOKEN') }}"
+      threads: 4

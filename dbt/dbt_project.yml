@@ -1,0 +1,26 @@
+name: gridpulse
+version: "0.1.0"
+config-version: 2
+profile: gridpulse
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  gridpulse:
+    # Push model and column descriptions into Unity Catalog (Genie and the ops agent read them).
+    +persist_docs:
+      relation: true
+      columns: true
+    staging:
+      +schema: staging
+      +materialized: view
+    marts:
+      +schema: gold
+      +materialized: table
+    ml:
+      +schema: ml
+      +materialized: table

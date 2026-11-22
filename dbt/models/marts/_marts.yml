@@ -159,3 +159,67 @@ models:
                 min_value: 0
                 max_value: 100
                 row_condition: "cloud_cover_pct IS NOT NULL"
+
+  - name: agg_renewable_share_daily
+    description: >
+      Business question 1. One row per German (Europe/Berlin) calendar day: generation by
+      category, renewable share of generation and of load, daily prices and how many
+      quarter-hours had a negative price. is_complete_day is false for days that are
+      still filling (today) or before the data starts.
+    columns:
+      - name: local_date
+        description: German calendar date.
+        data_tests: [unique, not_null]
+      - name: renewable_share
+        description: Renewable generation divided by total generation (0-1).
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 1
+                row_condition: "renewable_share IS NOT NULL"
+      - name: renewable_share_of_load
+        description: >
+          Renewable generation divided by grid load. Can exceed 1 when Germany produces
+          more renewable power than it consumes (the rest is exported or stored).
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                row_condition: "renewable_share_of_load IS NOT NULL"
+      - name: negative_price_quarter_hours
+        description: Number of quarter-hours that day with a day-ahead price below 0 EUR/MWh.
+      - name: is_complete_day
+        description: True when generation exists for every quarter-hour of the local day (92, 96 or 100).
+        data_tests: [not_null]
+
+  - name: agg_negative_price_hours
+    description: >
+      Business question 2. One row per UTC hour in which at least one quarter-hour had a
+      negative day-ahead price, with what was generating and the weather at that time.
+    columns:
+      - name: hour_time_key
+        description: time_key of the hour's first quarter-hour (UTC, yyyyMMddHHmm).
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_time')
+                field: time_key
+      - name: min_price_eur_mwh
+        description: Lowest price in the hour (always below 0 here).
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                max_value: 0
+                strictly: true
+      - name: negative_quarter_hours
+        description: How many of the hour's four quarter-hours had a negative price (1-4).
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 1
+                max_value: 4
+      - name: renewable_share
+        description: Renewable share of generation in that hour (0-1).

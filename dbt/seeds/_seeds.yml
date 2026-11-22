@@ -1,0 +1,15 @@
+version: 2
+
+seeds:
+  - name: regions
+    description: German federal states with the weather point used for each (from config/open_meteo.yaml).
+    config:
+      column_types:
+        latitude: double
+        longitude: double
+        is_national: boolean
+  - name: holidays_de
+    description: Nationwide German public holidays 2019-2030 (Easter-based dates computed).
+    config:
+      column_types:
+        holiday_date: date

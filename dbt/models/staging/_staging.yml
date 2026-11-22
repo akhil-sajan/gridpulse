@@ -1,0 +1,16 @@
+version: 2
+
+models:
+  - name: stg_smard_generation
+    description: SMARD generation, 15-minute values only, MWh per interval.
+    columns:
+      - name: mwh
+        description: Energy generated in the 15-minute interval (MWh).
+  - name: stg_smard_consumption
+    description: SMARD grid load and residual load, 15-minute values, MWh per interval.
+  - name: stg_smard_prices
+    description: Day-ahead prices for the DE-LU bidding zone in both published resolutions.
+  - name: stg_openmeteo_weather
+    description: Hourly weather per state location plus the national average (region 'de').
+  - name: stg_production_types
+    description: Generation series with category and flags.

@@ -1,0 +1,161 @@
+version: 2
+
+models:
+  - name: dim_time
+    description: >
+      One row per 15-minute interval. Keys are UTC; German local attributes come from
+      Europe/Berlin, so local days have 92, 96 or 100 quarter-hours.
+    columns:
+      - name: time_key
+        description: UTC interval start as yyyyMMddHHmm.
+        data_tests: [unique, not_null]
+      - name: ts_utc
+        description: Interval start in UTC.
+        data_tests: [unique, not_null]
+      - name: ts_local
+        description: Interval start in German local time (Europe/Berlin), no time zone.
+      - name: local_date
+        description: German calendar date of the interval.
+      - name: local_weekday
+        description: 1 = Monday ... 7 = Sunday (German local time).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5, 6, 7]
+      - name: is_public_holiday_de
+        description: True on nationwide German public holidays.
+      - name: is_summer_time
+        description: True while Germany is on summer time (UTC+2).
+
+  - name: dim_production_type
+    description: Power sources as SMARD reports them, with category and flags.
+    columns:
+      - name: production_type_key
+        description: Surrogate key (hash of series_name).
+        data_tests: [unique, not_null]
+      - name: series_name
+        data_tests: [unique, not_null]
+      - name: category
+        description: renewable, fossil, nuclear or storage.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [renewable, fossil, nuclear, storage]
+      - name: is_renewable
+        data_tests: [not_null]
+
+  - name: dim_region
+    description: The 16 German federal states (one weather point each) and Germany as a whole.
+    columns:
+      - name: region_key
+        description: Surrogate key (hash of region_code).
+        data_tests: [unique, not_null]
+      - name: region_code
+        description: de_<state> for states, de for Germany.
+        data_tests: [unique, not_null]
+
+  - name: fact_generation
+    description: Electricity generation per 15-minute interval and production type (MWh).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [time_key, production_type_key]
+    columns:
+      - name: time_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_time')
+                field: time_key
+      - name: production_type_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_production_type')
+                field: production_type_key
+      - name: mwh
+        description: Energy generated in the interval (MWh).
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+
+  - name: fact_consumption
+    description: Grid load and residual load per 15-minute interval (MWh).
+    columns:
+      - name: time_key
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_time')
+                field: time_key
+      - name: grid_load_mwh
+        description: Total electricity consumption including grid losses (MWh).
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                row_condition: "grid_load_mwh IS NOT NULL"
+      - name: residual_load_mwh
+        description: Grid load minus wind and solar generation (MWh); can be negative.
+
+  - name: fact_price
+    description: Day-ahead price DE-LU per 15-minute interval (EUR/MWh).
+    columns:
+      - name: time_key
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_time')
+                field: time_key
+      - name: price_eur_mwh
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: -500
+                max_value: 4000
+      - name: price_resolution
+        description: quarterhour = SMARD's 15-minute price; hour = hourly price applied to all four quarter-hours.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [quarterhour, hour]
+
+  - name: fact_weather
+    description: Hourly weather per region (16 state points and the national average).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [time_key, region_key]
+    columns:
+      - name: time_key
+        description: First 15-minute time_key of the hour.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_time')
+                field: time_key
+      - name: region_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_region')
+                field: region_key
+      - name: cloud_cover_pct
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 100
+                row_condition: "cloud_cover_pct IS NOT NULL"

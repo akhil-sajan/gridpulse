@@ -24,3 +24,7 @@ models:
     ml:
       +schema: ml
       +materialized: table
+
+seeds:
+  gridpulse:
+    +schema: staging

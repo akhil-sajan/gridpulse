@@ -1,0 +1,18 @@
+region_code,region_name,weather_point,latitude,longitude,is_national
+de,Deutschland,average of 16 state points,,,true
+de_bw,Baden-Württemberg,Stuttgart,48.7758,9.1829,false
+de_by,Bayern,München,48.1351,11.582,false
+de_be,Berlin,Berlin,52.52,13.405,false
+de_bb,Brandenburg,Potsdam,52.3906,13.0645,false
+de_hb,Bremen,Bremen,53.0793,8.8017,false
+de_hh,Hamburg,Hamburg,53.5511,9.9937,false
+de_he,Hessen,Wiesbaden,50.0782,8.2398,false
+de_mv,Mecklenburg-Vorpommern,Schwerin,53.6355,11.4012,false
+de_ni,Niedersachsen,Hannover,52.3759,9.732,false
+de_nw,Nordrhein-Westfalen,Düsseldorf,51.2277,6.7735,false
+de_rp,Rheinland-Pfalz,Mainz,49.9929,8.2473,false
+de_sl,Saarland,Saarbrücken,49.2402,6.9969,false
+de_sn,Sachsen,Dresden,51.0504,13.7373,false
+de_st,Sachsen-Anhalt,Magdeburg,52.1205,11.6276,false
+de_sh,Schleswig-Holstein,Kiel,54.3233,10.1228,false
+de_th,Thüringen,Erfurt,50.9848,11.0299,false

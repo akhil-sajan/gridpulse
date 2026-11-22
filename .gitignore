@@ -22,6 +22,8 @@ htmlcov/
 # Data files (raw data lives in the landing zone, not in Git)
 data/
 *.csv
+# ...except dbt seeds, which are small reference tables that belong in Git
+!dbt/seeds/*.csv
 *.parquet
 *.xml
 *.zip

@@ -148,3 +148,15 @@ A running record of choices made while building GridPulse, and why.
 - **Also added:** a `.sqlfluff` config for SQL linting and a manual GitHub workflow that runs dbt from GitHub's servers.
 - **Local tooling note:** the laptop uses Python 3.14, which prints a Pydantic V1 warning; dbt works. A Python 3.12 environment is the fallback if it ever causes problems.
 - **Verified:** `dbt debug` passed (connection OK) and `dbt source freshness` passed for all five silver tables.
+
+## P2.5 – Gold star schema in dbt (2026-11-22)
+
+- **Layers:** staging views over silver (schema `staging`, renames and filters only) → gold marts (schema `gold`). Reference data as dbt seeds: `regions` (16 states plus Germany, generated from `config/open_meteo.yaml`) and `holidays_de` (nationwide public holidays 2019–2030, Easter-based dates computed). Contract tests keep both seeds in line with the config and the calendar.
+- **dim_time:** one row per 15-minute interval from December 2019 to the end of next year (generated, so it extends itself). `time_key` is the UTC start as `yyyyMMddHHmm`: readable, sortable and unique even in the repeated local hour of the October DST day. German local attributes (date, hour, weekday, quarter-hour of day, public holiday, summer time) come from Europe/Berlin.
+- **Other dimensions:** `dim_production_type` and `dim_region` with hashed surrogate keys (`dbt_utils.generate_surrogate_key`); `dim_region` includes Germany as a whole (`de`), so national and state weather share one fact table.
+- **Facts:** `fact_generation` (15 min × source, MWh), `fact_consumption` (15 min, grid and residual load), `fact_price` (15 min, EUR/MWh), `fact_weather` (hour × region; keyed by the hour's first 15-minute `time_key`).
+- **Incremental where it pays off:** `fact_generation` and `fact_consumption` merge only rows whose silver version changed since the last run (`_source_loaded_at` = landing time of the file behind the row), so revisions of open weeks are picked up however old they are. The smaller facts are rebuilt in full. Large tables use liquid clustering on `time_key`.
+- **Price resolution:** `fact_price` uses SMARD's 15-minute price where one exists and otherwise applies the hourly price to all four quarter-hours; `price_resolution` records which. This is correct whichever way SMARD's historical 15-minute series turns out to be built.
+- **Tests (40):** unique and not-null keys, relationships from every fact to its dimensions, accepted values (categories, weekdays, price resolution), value ranges (`dbt_expectations`: generation ≥ 0, grid load ≥ 0, price -500 to 4,000, cloud cover 0–100), and a singular test that joining generation, price and weather for one day doesn't multiply rows.
+- **Lesson:** the repo ignores `*.csv` to keep raw data out of Git, which also hid the seed files; CI caught it and seeds are now explicitly allowed.
+- **Verified:** first `dbt build`: 54 of 54 passed (14 objects built, 40 tests) in about 60 seconds.

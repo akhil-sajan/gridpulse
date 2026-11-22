@@ -1,0 +1,32 @@
+# Weather forecast every 3 hours. The forecasts are processed into bronze and silver by
+# the daily gridpulse_refresh job.
+resources:
+  jobs:
+    forecast:
+      name: gridpulse_forecast
+      schedule:
+        quartz_cron_expression: "0 20 0/3 * * ?"
+        timezone_id: UTC
+      max_concurrent_runs: 1
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      environments:
+        - environment_key: ingest
+          spec:
+            environment_version: "2"
+            dependencies:
+              - requests>=2.32,<3
+              - pyyaml>=6,<7
+              - databricks-sdk>=0.40
+      tasks:
+        - task_key: ingest_forecast
+          environment_key: ingest
+          timeout_seconds: 900
+          spark_python_task:
+            python_file: ../src/jobs/run_ingester.py
+            parameters:
+              - ${workspace.file_path}
+              - ${var.env}
+              - ingestion.batch.open_meteo
+              - forecast

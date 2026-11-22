@@ -1,7 +1,7 @@
-# Bronze (P1.5) and silver (P2.1) in one serverless, triggered pipeline.
-# Free Edition allows one active pipeline per type, and keeping both layers in one
-# pipeline lets Databricks order the steps from the table dependencies.
-# (The resource key stays "bronze" so the existing pipeline and its tables are kept.)
+# Bronze (P1.5) and silver (P2.1) in one serverless, triggered pipeline, and the daily
+# job that ingests, refreshes and checks. Free Edition allows one active pipeline per
+# type, and one pipeline lets Databricks order the steps from the table dependencies.
+# (Resource keys stay "bronze" / "bronze_refresh" so existing objects and tables are kept.)
 resources:
   pipelines:
     bronze:
@@ -24,12 +24,51 @@ resources:
   jobs:
     bronze_refresh:
       name: gridpulse_refresh
-      # Daily after the 04:23 UTC ingestion. Paused automatically in the dev target.
+      # Daily: download new SMARD and weather data, then refresh bronze and silver, then check.
       schedule:
-        quartz_cron_expression: "0 15 5 * * ?"
+        quartz_cron_expression: "0 30 4 * * ?"
         timezone_id: UTC
+      max_concurrent_runs: 1
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      environments:
+        - environment_key: ingest
+          spec:
+            environment_version: "2"
+            dependencies:
+              - requests>=2.32,<3
+              - pyyaml>=6,<7
+              - databricks-sdk>=0.40
       tasks:
+        - task_key: ingest_smard
+          environment_key: ingest
+          timeout_seconds: 3600
+          spark_python_task:
+            python_file: ../src/jobs/run_ingester.py
+            parameters:
+              - ${workspace.file_path}
+              - ${var.env}
+              - ingestion.batch.smard
+              - --workers
+              - "4"
+        - task_key: ingest_open_meteo_archive
+          environment_key: ingest
+          timeout_seconds: 3600
+          spark_python_task:
+            python_file: ../src/jobs/run_ingester.py
+            parameters:
+              - ${workspace.file_path}
+              - ${var.env}
+              - ingestion.batch.open_meteo
+              - archive
         - task_key: refresh_pipeline
+          # Run even if one download failed, so the other source still gets processed;
+          # the job is still marked failed and the failure email is sent.
+          run_if: ALL_DONE
+          depends_on:
+            - task_key: ingest_smard
+            - task_key: ingest_open_meteo_archive
           pipeline_task:
             pipeline_id: ${resources.pipelines.bronze.id}
         - task_key: reconcile_bronze

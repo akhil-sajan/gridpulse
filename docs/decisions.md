@@ -136,3 +136,15 @@ A running record of choices made while building GridPulse, and why.
 - **GitHub Actions now:** CI (and CD from P5.5) plus a manual-only fallback workflow for the ingesters. The GitHub token is only needed for that fallback.
 - **Airflow considered:** reliable, but it needs an always-on server or a paid managed service, and adds a second orchestration system. Not worth it for this project.
 - **Verified:** manual runs of both jobs succeeded inside Databricks; silver grew by the expected amounts (generation +748 rows = 11 active series × 68 quarter-hours, weather +384 = 16 locations × 24 hours, forecasts 80 runs) and all silver checks passed.
+
+## P2.4 – dbt setup (2026-11-22)
+
+- **Split of responsibilities:** Lakeflow builds bronze and silver (streaming, Auto Loader, AUTO CDC); dbt builds gold (business logic as version-controlled, tested SQL with docs and lineage).
+- **Versions:** dbt-core 1.12 with dbt-databricks 1.13, installed from `requirements-dbt.txt`, separate from the ingestion requirements so ingestion jobs stay small.
+- **Connection:** the Databricks SQL warehouse (Free Edition, 2X-Small). `dbt/profiles.yml` contains no secrets: host, HTTP path and token come from environment variables, so the same file works on a laptop, in GitHub Actions and in a Databricks job. Targets `dev` and `prod` map to the two catalogs.
+- **Schemas:** a `generate_schema_name` macro uses the configured schema names as they are: `staging` (views over silver), `gold` (marts), `ml` (feature tables). The catalog already separates environments.
+- **Sources and freshness:** the silver tables are dbt sources. Freshness uses the landing time of the newest file behind each table (`_file_modified_at`): warn after 2 days, error after 4; forecasts warn after 12 hours, error after 1 day. Settings live under `config:` as current dbt expects.
+- **Packages:** `dbt_utils` and `dbt_expectations` (which brings `dbt_date`).
+- **Also added:** a `.sqlfluff` config for SQL linting and a manual GitHub workflow that runs dbt from GitHub's servers.
+- **Local tooling note:** the laptop uses Python 3.14, which prints a Pydantic V1 warning; dbt works. A Python 3.12 environment is the fallback if it ever causes problems.
+- **Verified:** `dbt debug` passed (connection OK) and `dbt source freshness` passed for all five silver tables.

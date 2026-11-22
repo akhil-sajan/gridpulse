@@ -288,7 +288,8 @@ changed AS (
 upserted AS (
     INSERT INTO public.power_units ({_COLS}, updated_at)
     SELECT {_COLS}, now() FROM changed
-    ON CONFLICT (unit_id) DO UPDATE SET {_SET}, updated_at = now()
+    ON CONFLICT (unit_id) DO UPDATE SET {_SET}, updated_at = now(),
+        change_source = 'mastr_export'
     RETURNING (xmax = 0) AS inserted
 )
 SELECT

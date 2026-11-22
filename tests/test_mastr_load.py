@@ -163,7 +163,7 @@ def test_capacity_share():
 
 def test_sql_statements_splits_ddl():
     statements = m.sql_statements(m.DDL_PATH.read_text(encoding="utf-8"))
-    assert len(statements) == 2
+    assert len(statements) == 4
     assert statements[0].startswith("CREATE TABLE IF NOT EXISTS public.power_units")
     assert all("--" not in s for s in statements)
 
@@ -199,7 +199,7 @@ TEST_DSN = os.environ.get("GRIDPULSE_TEST_PG_DSN")
 def test_load_is_idempotent_and_detects_changes(export_zip, tmp_path):
     conn = m.connect(TEST_DSN)
     try:
-        conn.run("DROP TABLE IF EXISTS public.power_units")
+        conn.run("DROP TABLE IF EXISTS public.power_units, public.simulator_runs")
         csv_path = tmp_path / "rows.csv"
         with csv_path.open("w", encoding="utf-8", newline="") as out:
             m.parse_export(export_zip, out, ["solar", "wind"], Decimal(100))
@@ -221,5 +221,5 @@ def test_load_is_idempotent_and_detects_changes(export_zip, tmp_path):
         [[kw]] = conn.run("SELECT net_capacity_kw FROM public.power_units WHERE unit_id='SEE2'")
         assert kw == Decimal("120.000")
     finally:
-        conn.run("DROP TABLE IF EXISTS public.power_units")
+        conn.run("DROP TABLE IF EXISTS public.power_units, public.simulator_runs")
         conn.close()

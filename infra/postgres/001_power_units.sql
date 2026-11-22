@@ -23,3 +23,21 @@ CREATE TABLE IF NOT EXISTS public.power_units (
 );
 
 CREATE INDEX IF NOT EXISTS power_units_updated_at_idx ON public.power_units (updated_at);
+
+-- P3.2: who made the row's last change: the real MaStR export or the change simulator.
+-- Keeps simulated history clearly separated from real register data.
+ALTER TABLE public.power_units
+    ADD COLUMN IF NOT EXISTS change_source text NOT NULL DEFAULT 'mastr_export';
+
+-- P3.2: one row per simulator run, so each day's changes can be checked.
+CREATE TABLE IF NOT EXISTS public.simulator_runs (
+    run_id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    run_at            timestamptz NOT NULL DEFAULT now(),
+    seed              bigint,
+    new_units         integer NOT NULL,
+    commissioned      integer NOT NULL,
+    capacity_changed  integer NOT NULL,
+    temporarily_stopped integer NOT NULL,
+    restarted         integer NOT NULL,
+    decommissioned    integer NOT NULL
+);

@@ -17,7 +17,9 @@ Builds the gold star schema from the silver tables that the Lakeflow pipeline ma
 # every new shell
 $env:DATABRICKS_HOST = "https://<workspace>.cloud.databricks.com"
 $env:DATABRICKS_HTTP_PATH = "/sql/1.0/warehouses/<id>"
-$env:DATABRICKS_TOKEN = "<personal access token>"
+# enter the token without showing it (works in Windows PowerShell 5.1 and PowerShell 7)
+$t = Read-Host "Databricks token" -AsSecureString
+$env:DATABRICKS_TOKEN = [System.Net.NetworkCredential]::new("", $t).Password
 
 cd dbt
 ..\.venv\Scripts\dbt deps --profiles-dir .

@@ -183,9 +183,38 @@ class TypeStats:
         return float(self.kept_kw / total) if total else 0.0
 
 
+SMALL_KEY = (
+    "unit_type",
+    "energy_source",
+    "federal_state",
+    "status",
+    "commissioning_month",
+    "decommissioning_month",
+)
+SMALL_COLUMNS = (*SMALL_KEY, "units", "net_capacity_kw", "export_date")
+
+
+def month_start(value: object) -> str | None:
+    """'2015-06-30' -> '2015-06-01' (None stays None)."""
+    return f"{str(value)[:7]}-01" if value else None
+
+
+def small_key(row: dict[str, object]) -> tuple:
+    return (
+        row["unit_type"],
+        row["energy_source"],
+        row["federal_state"],
+        row["status"],
+        month_start(row["commissioning_date"]),
+        month_start(row["decommissioning_date"]),
+    )
+
+
 @dataclass
 class ParseResult:
     stats: dict[str, TypeStats] = field(default_factory=dict)
+    # Units below the size limit, summed: key -> [units, kW]
+    small: dict[tuple, list] = field(default_factory=dict)
 
     @property
     def kept(self) -> int:
@@ -194,14 +223,15 @@ class ParseResult:
 
 def parse_export(
     zip_path: Path,
-    out: io.TextIOBase,
+    out: io.TextIOBase | None,
     unit_types: Iterable[str],
     min_kw: Decimal,
     progress_every: int = 500_000,
 ) -> ParseResult:
-    """Stream the export and write kept units to ``out`` as CSV (no header)."""
+    """Stream the export: units >= ``min_kw`` go to ``out`` as CSV (no header, skipped if
+    ``out`` is None); smaller units are summed in ``result.small``."""
     result = ParseResult()
-    writer = csv.writer(out)
+    writer = csv.writer(out) if out is not None else None
     with zipfile.ZipFile(zip_path) as zf:
         catalog = load_catalog(zf)
         log.info("catalog loaded", extra={"values": len(catalog)})
@@ -222,9 +252,13 @@ def parse_export(
                         elif row["net_capacity_kw"] >= min_kw:
                             stats.kept += 1
                             stats.kept_kw += row["net_capacity_kw"]
-                            writer.writerow(["" if row[c] is None else row[c] for c in COLUMNS])
+                            if writer is not None:
+                                writer.writerow(["" if row[c] is None else row[c] for c in COLUMNS])
                         else:
                             stats.skipped_kw += row["net_capacity_kw"]
+                            bucket = result.small.setdefault(small_key(row), [0, Decimal(0)])
+                            bucket[0] += 1
+                            bucket[1] += row["net_capacity_kw"]
                         if stats.seen % progress_every == 0:
                             log.info(
                                 "parsing",
@@ -298,6 +332,13 @@ SELECT
 FROM upserted
 """
 
+SMALL_SUMMARY_SQL = """
+SELECT unit_type, sum(units) AS units, round(sum(net_capacity_kw) / 1000, 1) AS mw
+FROM public.power_units_small_agg
+GROUP BY unit_type
+ORDER BY unit_type
+"""
+
 SUMMARY_SQL = """
 SELECT unit_type, count(*) AS units, round(sum(net_capacity_kw) / 1000, 1) AS mw
 FROM public.power_units
@@ -334,6 +375,40 @@ def load_csv(conn, csv_path: Path) -> tuple[int, int]:
     return int(inserted), int(updated)
 
 
+def export_date(zip_path: Path) -> str | None:
+    """Gesamtdatenexport_20261122_26.2.zip -> '2026-11-22'."""
+    match = re.search(r"_(\d{4})(\d{2})(\d{2})_", zip_path.name)
+    return "-".join(match.groups()) if match else None
+
+
+def small_rows(result: ParseResult, export_day: str | None) -> list[list[object]]:
+    return [
+        [*key, units, kw, export_day]
+        for key, (units, kw) in sorted(result.small.items(), key=lambda kv: str(kv[0]))
+    ]
+
+
+def load_small(conn, rows: list[list[object]]) -> int:
+    """Replace public.power_units_small_agg with the new sums, in one transaction."""
+    for statement in sql_statements(DDL_PATH.read_text(encoding="utf-8")):
+        conn.run(statement)
+    buffer = io.StringIO()
+    csv.writer(buffer).writerows([["" if v is None else v for v in r] for r in rows])
+    conn.run("START TRANSACTION")
+    try:
+        conn.run("TRUNCATE public.power_units_small_agg")
+        conn.run(
+            f"COPY public.power_units_small_agg ({', '.join(SMALL_COLUMNS)}) "
+            "FROM STDIN WITH (FORMAT csv)",
+            stream=io.BytesIO(buffer.getvalue().encode("utf-8")),
+        )
+        conn.run("COMMIT")
+    except Exception:
+        conn.run("ROLLBACK")
+        raise
+    return len(rows)
+
+
 # --------------------------------------------------------------------------- CLI
 
 
@@ -362,6 +437,12 @@ def main(argv: list[str] | None = None) -> int:
         help=f"comma-separated unit types (default {','.join(UNIT_FILES)})",
     )
     parser.add_argument("--dry-run", action="store_true", help="parse and count only")
+    parser.add_argument(
+        "--small-units-only",
+        action="store_true",
+        help="only replace the summary of units below --min-kw; leave power_units untouched "
+        "(so simulated changes are kept)",
+    )
     args = parser.parse_args(argv)
 
     unit_types = [t.strip() for t in args.types.split(",") if t.strip()]
@@ -379,19 +460,30 @@ def main(argv: list[str] | None = None) -> int:
     csv_path = Path(tmp)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as out:
-            result = parse_export(args.zip, out, unit_types, args.min_kw)
+            result = parse_export(
+                args.zip, None if args.small_units_only else out, unit_types, args.min_kw
+            )
         _print_parse_table(result, args.min_kw)
+        small = small_rows(result, export_date(args.zip))
         log.info(
             "parse finished",
-            extra={"rows": result.kept, "seconds": round(time.monotonic() - started)},
+            extra={
+                "rows": result.kept,
+                "small_unit_groups": len(small),
+                "seconds": round(time.monotonic() - started),
+            },
         )
         if args.dry_run:
             return 0
 
         conn = connect(dsn)
         try:
-            inserted, updated = load_csv(conn, csv_path)
+            inserted = updated = None
+            if not args.small_units_only:
+                inserted, updated = load_csv(conn, csv_path)
+            small_loaded = load_small(conn, small)
             summary = conn.run(SUMMARY_SQL)
+            small_summary = conn.run(SMALL_SUMMARY_SQL)
         finally:
             conn.close()
     finally:
@@ -402,13 +494,20 @@ def main(argv: list[str] | None = None) -> int:
         extra={
             "inserted": inserted,
             "updated": updated,
+            "small_unit_groups": small_loaded,
             "seconds": round(time.monotonic() - started),
         },
     )
-    print(f"\nInserted {inserted:,}, updated {updated:,}. public.power_units now holds:")
+    if inserted is not None:
+        print(f"\nInserted {inserted:,}, updated {updated:,}.")
+    print("\npublic.power_units now holds:")
     print(f"{'unit_type':<11}{'units':>10}{'MW':>12}")
     for unit_type, units, mw in summary:
         print(f"{unit_type:<11}{units:>10,}{float(mw):>12,.1f}")
+    print(f"\npublic.power_units_small_agg ({small_loaded:,} groups) sums units below the limit:")
+    print(f"{'unit_type':<11}{'units':>12}{'MW':>12}")
+    for unit_type, units, mw in small_summary:
+        print(f"{unit_type:<11}{units:>12,}{float(mw):>12,.1f}")
     return 0
 
 

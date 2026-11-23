@@ -13,6 +13,10 @@ import pytest
 
 from ingestion.batch import mastr_load as m
 
+DROP_ALL = (
+    "DROP TABLE IF EXISTS public.power_units, public.simulator_runs, public.power_units_small_agg"
+)
+
 CATALOG = {
     "1402": "Hessen",
     "1410": "Bayern",
@@ -163,7 +167,7 @@ def test_capacity_share():
 
 def test_sql_statements_splits_ddl():
     statements = m.sql_statements(m.DDL_PATH.read_text(encoding="utf-8"))
-    assert len(statements) == 4
+    assert len(statements) == 5
     assert statements[0].startswith("CREATE TABLE IF NOT EXISTS public.power_units")
     assert all("--" not in s for s in statements)
 
@@ -199,7 +203,7 @@ TEST_DSN = os.environ.get("GRIDPULSE_TEST_PG_DSN")
 def test_load_is_idempotent_and_detects_changes(export_zip, tmp_path):
     conn = m.connect(TEST_DSN)
     try:
-        conn.run("DROP TABLE IF EXISTS public.power_units, public.simulator_runs")
+        conn.run(DROP_ALL)
         csv_path = tmp_path / "rows.csv"
         with csv_path.open("w", encoding="utf-8", newline="") as out:
             m.parse_export(export_zip, out, ["solar", "wind"], Decimal(100))
@@ -221,5 +225,57 @@ def test_load_is_idempotent_and_detects_changes(export_zip, tmp_path):
         [[kw]] = conn.run("SELECT net_capacity_kw FROM public.power_units WHERE unit_id='SEE2'")
         assert kw == Decimal("120.000")
     finally:
-        conn.run("DROP TABLE IF EXISTS public.power_units, public.simulator_runs")
+        conn.run(DROP_ALL)
+        conn.close()
+
+
+def test_small_units_are_summed_by_state_status_and_month(export_zip):
+    result, _ = _parse(export_zip)
+    # SEE1 (9.8 kW solar, Hessen, in operation, commissioned 2015-06) and SEV1 (50 kW gas).
+    assert result.small[
+        ("solar", "Solare Strahlungsenergie", "Hessen", "In Betrieb", "2015-06-01", None)
+    ] == [1, Decimal("9.8")]
+    assert sum(units for units, _ in result.small.values()) == 2
+    total_kw = sum(kw for _, kw in result.small.values())
+    assert total_kw == result.stats["solar"].skipped_kw + result.stats["combustion"].skipped_kw
+
+
+def test_small_units_only_writes_no_big_units(export_zip):
+    result = m.parse_export(export_zip, None, ["solar", "wind"], Decimal(100))
+    assert result.kept == 3 and len(result.small) == 1
+
+
+def test_export_date_from_file_name(tmp_path):
+    assert m.export_date(Path("Gesamtdatenexport_20261122_26.2.zip")) == "2026-11-22"
+    assert m.export_date(Path("other.zip")) is None
+
+
+@pytest.mark.skipif(not TEST_DSN, reason="set GRIDPULSE_TEST_PG_DSN to run against Postgres")
+def test_small_units_only_keeps_power_units(export_zip, tmp_path, monkeypatch):
+    conn = m.connect(TEST_DSN)
+    try:
+        conn.run(DROP_ALL)
+        csv_path = tmp_path / "rows.csv"
+        with csv_path.open("w", encoding="utf-8", newline="") as out:
+            result = m.parse_export(export_zip, out, ["solar", "combustion"], Decimal(100))
+        m.load_csv(conn, csv_path)
+        conn.run("UPDATE public.power_units SET status = 'changed' WHERE unit_id = 'SEE2'")
+
+        monkeypatch.setenv(m.DSN_ENV, TEST_DSN)
+        assert m.main(["--zip", str(export_zip), "--small-units-only"]) == 0
+        [[status]] = conn.run("SELECT status FROM public.power_units WHERE unit_id = 'SEE2'")
+        assert status == "changed"  # untouched
+        assert conn.run(
+            "SELECT unit_type, units, net_capacity_kw, export_date::text "
+            "FROM public.power_units_small_agg ORDER BY unit_type"
+        ) == [
+            ["combustion", 1, Decimal("50.000"), "2026-11-22"],
+            ["solar", 1, Decimal("9.800"), "2026-11-22"],
+        ]
+        # Running again replaces the sums instead of adding to them.
+        m.load_small(conn, m.small_rows(result, "2026-11-22"))
+        [[groups]] = conn.run("SELECT count(*) FROM public.power_units_small_agg")
+        assert groups == 2
+    finally:
+        conn.run(DROP_ALL)
         conn.close()

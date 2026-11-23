@@ -12,6 +12,10 @@ import pytest
 from ingestion.batch import mastr_simulator as sim
 from ingestion.batch.mastr_load import DDL_PATH, connect, sql_statements
 
+DROP_ALL = (
+    "DROP TABLE IF EXISTS public.power_units, public.simulator_runs, public.power_units_small_agg"
+)
+
 
 def test_new_unit_id_is_marked_and_unique_per_index():
     run_at = datetime(2026, 11, 23, 6, 17, tzinfo=UTC)
@@ -36,7 +40,7 @@ TEST_DSN = os.environ.get("GRIDPULSE_TEST_PG_DSN")
 
 
 def _seed_register(conn) -> None:
-    conn.run("DROP TABLE IF EXISTS public.power_units, public.simulator_runs")
+    conn.run(DROP_ALL)
     for statement in sql_statements(DDL_PATH.read_text(encoding="utf-8")):
         conn.run(statement)
     statuses = [sim.IN_OPERATION] * 30 + [sim.PLANNED] * 15 + [sim.TEMP_STOPPED] * 5
@@ -85,7 +89,7 @@ def test_simulate_changes_rows_and_bumps_watermark():
         [[runs]] = conn.run("SELECT count(*) FROM public.simulator_runs")
         assert runs == 1
     finally:
-        conn.run("DROP TABLE IF EXISTS public.power_units, public.simulator_runs")
+        conn.run(DROP_ALL)
         conn.close()
 
 
@@ -106,5 +110,5 @@ def test_simulate_rolls_back_on_error(monkeypatch):
         )
         assert changed == 0  # half-done run left no trace
     finally:
-        conn.run("DROP TABLE IF EXISTS public.power_units, public.simulator_runs")
+        conn.run(DROP_ALL)
         conn.close()

@@ -41,3 +41,20 @@ CREATE TABLE IF NOT EXISTS public.simulator_runs (
     restarted         integer NOT NULL,
     decommissioned    integer NOT NULL
 );
+
+-- P3.5: units below the loader's size limit (default 100 kW), summed instead of stored
+-- one by one: millions of rooftop systems would not fit the free tier, but their capacity
+-- (about half of all solar) is needed for complete installed-capacity totals.
+-- Replaced as a whole on each load; it is a snapshot of one export, not a CDC source.
+CREATE TABLE IF NOT EXISTS public.power_units_small_agg (
+    unit_type             text NOT NULL,
+    energy_source         text,
+    federal_state         text,
+    status                text,
+    commissioning_month   date,          -- first day of the month, NULL if unknown
+    decommissioning_month date,          -- first day of the month, NULL if still open
+    units                 integer NOT NULL,
+    net_capacity_kw       numeric(16, 3) NOT NULL,
+    export_date           date,          -- date of the MaStR export the sums come from
+    loaded_at             timestamptz NOT NULL DEFAULT now()
+);

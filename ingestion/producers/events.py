@@ -174,6 +174,21 @@ def connection_options(env: dict[str, str]) -> dict[str, Any]:
     return options
 
 
+def _show_kafka_warnings() -> None:
+    """kafka-python logs connection and login failures (e.g. a wrong SASL password) as
+    warnings on its own logger and then only raises "Unable to bootstrap". Route those
+    warnings into our JSON logs so the real reason is visible."""
+    import logging
+
+    from ingestion.common.logs import get_logger
+
+    kafka_logger = logging.getLogger("kafka")
+    if not any(getattr(h, "_gridpulse", False) for h in kafka_logger.handlers):
+        for handler in get_logger("gridpulse.kafka").handlers:
+            kafka_logger.addHandler(handler)
+    kafka_logger.setLevel(logging.WARNING)
+
+
 class KafkaSink:
     """Sends JSON messages to Kafka / Redpanda with kafka-python (pure Python).
 
@@ -191,6 +206,7 @@ class KafkaSink:
     def __init__(self, env: dict[str, str]) -> None:
         from kafka import KafkaProducer
 
+        _show_kafka_warnings()
         options = connection_options(env) | {
             "acks": "all",
             "enable_idempotence": True,

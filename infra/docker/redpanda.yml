@@ -1,0 +1,36 @@
+# Local Kafka-compatible broker for testing the producers (P4.1), plus the Redpanda web
+# console on http://localhost:8080.
+#
+#   docker compose -f infra/docker/redpanda.yml up -d     # start
+#   docker compose -f infra/docker/redpanda.yml down -v   # stop and delete all data
+#
+# Single broker, no authentication: for the laptop only (security PLAINTEXT).
+name: gridpulse
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v25.2.10
+    container_name: redpanda
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --kafka-addr=internal://0.0.0.0:29092,external://0.0.0.0:9092
+      - --advertise-kafka-addr=internal://redpanda:29092,external://localhost:9092
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health", "--exit-when-healthy"]
+      interval: 5s
+      retries: 20
+
+  console:
+    image: docker.redpanda.com/redpandadata/console:v3.2.2
+    container_name: redpanda-console
+    environment:
+      KAFKA_BROKERS: redpanda:29092
+    ports:
+      - "8080:8080"
+    depends_on:
+      redpanda:
+        condition: service_healthy

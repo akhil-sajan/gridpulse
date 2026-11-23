@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "gridpulse/energy.generation.v1",
+  "title": "Public net electricity generation in Germany for one production type and quarter-hour",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_id", "event_ts_utc", "produced_at", "schema_version", "source", "payload"],
+  "properties": {
+    "event_id": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+    "event_ts_utc": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"},
+    "produced_at": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"},
+    "schema_version": {"const": "energy.generation.v1"},
+    "source": {"const": "energy-charts"},
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["country", "production_type", "production_type_slug", "power_mw"],
+      "properties": {
+        "country": {"type": "string", "minLength": 2, "maxLength": 2},
+        "production_type": {"type": "string", "minLength": 1},
+        "production_type_slug": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+        "power_mw": {"type": "number", "minimum": -100000, "maximum": 200000}
+      }
+    }
+  }
+}

@@ -1,4 +1,4 @@
-# Bronze (P1.5) and silver (P2.1) in one serverless, triggered pipeline. Free Edition
+# Bronze (P1.5), silver (P2.1) and the SCD2 power-plant dimension (P3.4) in one serverless, triggered pipeline. Free Edition
 # allows one active pipeline per type, and one pipeline lets Databricks order the steps
 # from the table dependencies. (The resource key stays "bronze" so the existing pipeline
 # and its tables are kept.) The daily job that runs it is in refresh.job.yml.
@@ -16,6 +16,8 @@ resources:
             path: ../src/bronze/bronze_pipeline.py
         - file:
             path: ../src/silver/silver_pipeline.py
+        - file:
+            path: ../src/gold/power_plant_pipeline.py
       configuration:
         gridpulse.catalog: ${var.catalog}
         gridpulse.landing_root: /Volumes/${var.catalog}/bronze/landing

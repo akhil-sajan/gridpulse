@@ -180,4 +180,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Only exit on errors: serverless job tasks treat any SystemExit, even 0, as a failure.
+    code = main()
+    if code:
+        sys.exit(code)

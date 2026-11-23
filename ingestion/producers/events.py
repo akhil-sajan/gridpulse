@@ -25,6 +25,7 @@ data is kept for inspection but never reaches consumers of the main topic.
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -188,7 +189,8 @@ def _show_kafka_warnings() -> None:
     if not any(getattr(h, "_gridpulse", False) for h in kafka_logger.handlers):
         for handler in get_logger("gridpulse.kafka").handlers:
             kafka_logger.addHandler(handler)
-    kafka_logger.setLevel(logging.WARNING)
+    debug = os.environ.get("GRIDPULSE_KAFKA_DEBUG", "").lower() in ("1", "true", "yes")
+    kafka_logger.setLevel(logging.DEBUG if debug else logging.WARNING)
 
 
 class KafkaSink:

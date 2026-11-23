@@ -236,3 +236,14 @@ def test_all_topics_include_dlqs():
         "meters.readings.v1",
         "meters.readings.dlq.v1",
     ]
+
+
+def test_serializers_encode_key_and_compact_json():
+    import warnings
+
+    from ingestion.producers.events import _JsonSerializer, _KeySerializer
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert _KeySerializer().serialize("t", [], "solar") == b"solar"
+        assert _JsonSerializer().serialize("t", [], {"a": 1, "b": "ü"}) == b'{"a":1,"b":"\\u00fc"}'

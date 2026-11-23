@@ -3,5 +3,5 @@ requests>=2.32,<3
 pyyaml>=6,<7
 databricks-sdk>=0.40
 pg8000>=1.31,<2
-kafka-python>=2.2,<4
+kafka-python>=3,<4
 fastjsonschema>=2.19,<3

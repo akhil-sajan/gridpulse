@@ -116,6 +116,28 @@ class MemorySink:
         pass
 
 
+def _serializers():
+    from kafka.serializer import Serializer
+
+    class KeySerializer(Serializer):
+        def serialize(self, topic, headers, data):
+            return data.encode("utf-8")
+
+    class JsonSerializer(Serializer):
+        def serialize(self, topic, headers, data):
+            return json.dumps(data, separators=(",", ":")).encode("utf-8")
+
+    return KeySerializer, JsonSerializer
+
+
+def _KeySerializer():  # noqa: N802 - factory, imported lazily
+    return _serializers()[0]()
+
+
+def _JsonSerializer():  # noqa: N802
+    return _serializers()[1]()
+
+
 def connection_options(env: dict[str, str]) -> dict[str, Any]:
     """kafka-python connection settings from GRIDPULSE_KAFKA_* environment variables."""
     security = env.get("GRIDPULSE_KAFKA_SECURITY", "PLAINTEXT")
@@ -154,8 +176,8 @@ class KafkaSink:
             "enable_idempotence": True,
             "linger_ms": 50,
             "compression_type": "gzip",
-            "key_serializer": lambda k: k.encode("utf-8"),
-            "value_serializer": lambda v: json.dumps(v, separators=(",", ":")).encode("utf-8"),
+            "key_serializer": _KeySerializer(),
+            "value_serializer": _JsonSerializer(),
         }
         self._producer = KafkaProducer(**options)
 

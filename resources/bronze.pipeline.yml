@@ -15,10 +15,13 @@ resources:
         - file:
             path: ../src/bronze/bronze_pipeline.py
         - file:
+            path: ../src/bronze/kafka_bronze.py
+        - file:
             path: ../src/silver/silver_pipeline.py
         - file:
             path: ../src/gold/power_plant_pipeline.py
       configuration:
         gridpulse.catalog: ${var.catalog}
+        gridpulse.secret_scope: gridpulse
         gridpulse.landing_root: /Volumes/${var.catalog}/bronze/landing
         spark.sql.session.timeZone: UTC

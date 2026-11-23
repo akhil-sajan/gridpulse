@@ -69,6 +69,14 @@ resources:
             notebook_path: ../src/setup/bronze_check.py
             base_parameters:
               catalog: ${var.catalog}
+        - task_key: check_kafka_bronze
+          # P4.4: Kafka offsets in bronze are continuous (no gaps, no duplicates).
+          depends_on:
+            - task_key: refresh_pipeline
+          notebook_task:
+            notebook_path: ../src/setup/stream_check.py
+            base_parameters:
+              catalog: ${var.catalog}
         - task_key: check_silver
           depends_on:
             - task_key: refresh_pipeline

@@ -41,6 +41,24 @@ From the gold tables (`gold.agg_renewable_share_daily`, `gold.agg_negative_price
 
 From 2025 on, hours with at least one negative quarter-hour are counted (the day-ahead market moved to 15-minute prices), so 2025–2026 counts can be higher than hourly-based official figures.
 
+### Where Germany builds solar and wind
+
+From `gold.fact_installed_capacity` (MaStR power-plant register, export of 22 Nov 2026; units ≥ 100 kW one by one, smaller units summed), installed capacity at month end, net:
+
+| State | Solar 2020 → Oct 2026 (GW) | Wind 2020 → Oct 2026 (GW) | Added (GW) |
+|---|---|---|---|
+| Bayern | 13.8 → 31.5 | 2.5 → 2.9 | +18.1 |
+| Nordrhein-Westfalen | 5.5 → 14.3 | 6.1 → 10.1 | +12.9 |
+| Niedersachsen | 4.3 → 10.7 | 11.5 → 14.7 | +9.6 |
+| Baden-Württemberg | 6.3 → 14.8 | 1.6 → 2.3 | +9.2 |
+| Brandenburg | 4.0 → 9.1 | 7.5 → 9.7 | +7.3 |
+| Schleswig-Holstein | 1.7 → 4.8 | 6.8 → 10.2 | +6.5 |
+| Offshore zone (North and Baltic Sea) | – | 7.6 → 11.1 | +3.5 |
+
+- **The south builds solar, the north builds wind.** Bavaria added the most capacity of any state, almost all of it solar; its wind capacity barely moved. NRW added the most onshore wind (+4.0 GW), matching the Bundesnetzagentur's report that most new turbines in 2025 went up there.
+- **Cross-check:** wind at the end of June 2026 is 80.8 GW (onshore + offshore) against 80.85 GW official. Solar is 111.9 GW against 125.4 GW official; the register's net capacity (inverter limit) is used here, while official solar figures are most likely based on gross module capacity (about 10 % higher).
+- **Rooftops matter:** 54 of the 112 GW of solar come from systems below 100 kW.
+
 ## Data lineage (dbt)
 
 Silver tables (green) flow through staging views into the gold star schema and the answer tables:

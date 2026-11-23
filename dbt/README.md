@@ -33,3 +33,13 @@ cd dbt
 
 Actions -> **dbt (manual)** -> Run workflow. Uses the `DATABRICKS_HOST`,
 `DATABRICKS_HTTP_PATH` and `DATABRICKS_TOKEN` repository secrets.
+
+## If Windows blocks `dbt.exe`
+
+Smart App Control can block the unsigned `dbt.exe` launcher in the venv
+("An Application Control policy has blocked this file"). dbt itself is fine; start it
+through Python instead, with the same arguments:
+
+```powershell
+python -c "from dbt.cli.main import cli; cli()" build
+```

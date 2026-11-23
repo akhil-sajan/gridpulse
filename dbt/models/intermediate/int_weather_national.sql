@@ -25,18 +25,27 @@ weather AS (
        AND k.month_start = CAST(date_trunc('MM', w.ts_utc) AS DATE)
 )
 
+-- Rounded: a weighted mean of values that are all 100 can come out as 100.00000000000001
+-- in floating point, which would break the 0-100 range check on cloud cover.
 SELECT
     'de' AS region_code,
     ts_utc,
-    sum(shortwave_radiation * solar_mw)
-        / nullif(sum(CASE WHEN shortwave_radiation IS NOT NULL THEN solar_mw END), 0)
-        AS shortwave_radiation,
-    sum(cloud_cover * solar_mw)
-        / nullif(sum(CASE WHEN cloud_cover IS NOT NULL THEN solar_mw END), 0) AS cloud_cover,
-    sum(wind_speed_100m * wind_mw)
-        / nullif(sum(CASE WHEN wind_speed_100m IS NOT NULL THEN wind_mw END), 0)
-        AS wind_speed_100m,
-    avg(temperature_2m) AS temperature_2m,
+    round(
+        sum(shortwave_radiation * solar_mw)
+        / nullif(sum(CASE WHEN shortwave_radiation IS NOT NULL THEN solar_mw END), 0),
+        2
+    ) AS shortwave_radiation,
+    round(
+        sum(cloud_cover * solar_mw)
+        / nullif(sum(CASE WHEN cloud_cover IS NOT NULL THEN solar_mw END), 0),
+        2
+    ) AS cloud_cover,
+    round(
+        sum(wind_speed_100m * wind_mw)
+        / nullif(sum(CASE WHEN wind_speed_100m IS NOT NULL THEN wind_mw END), 0),
+        2
+    ) AS wind_speed_100m,
+    round(avg(temperature_2m), 2) AS temperature_2m,
     count(*) AS n_locations,
     max(_source_loaded_at) AS _source_loaded_at
 FROM weather

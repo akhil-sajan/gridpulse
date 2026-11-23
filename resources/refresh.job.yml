@@ -43,13 +43,23 @@ resources:
               - ${var.env}
               - ingestion.batch.open_meteo
               - archive
+        - task_key: extract_mastr
+          # P3.3: changed rows of the power-plant register from Neon Postgres (Spark JDBC,
+          # watermark CDC) into bronze.mastr_power_units_changes.
+          environment_key: ingest
+          timeout_seconds: 1800
+          spark_python_task:
+            python_file: ../src/cdc/mastr_extract.py
+            parameters:
+              - ${var.catalog}
         - task_key: refresh_pipeline
-          # Run even if one download failed, so the other source still gets processed;
+          # Run even if one source failed, so the others still get processed;
           # the job is still marked failed and the failure email is sent.
           run_if: ALL_DONE
           depends_on:
             - task_key: ingest_smard
             - task_key: ingest_open_meteo_archive
+            - task_key: extract_mastr
           pipeline_task:
             pipeline_id: ${resources.pipelines.bronze.id}
         - task_key: reconcile_bronze

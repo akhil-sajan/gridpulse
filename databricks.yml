@@ -23,6 +23,37 @@ targets:
     # Development mode pauses schedules unless a job sets pause_status: UNPAUSED itself.
     # Dev is the only running environment until prod exists (P5.5), so the ingestion
     # jobs do that (see resources/refresh.job.yml and resources/forecast.job.yml).
+    resources:
+      jobs:
+        # P3.2: plays the users of the operational database (Neon). It is not part of the
+        # data platform, so it exists only in dev; prod would otherwise double the changes.
+        # Runs at 04:10 UTC, before gridpulse_refresh (04:30) extracts the changes.
+        mastr_simulator:
+          name: gridpulse_mastr_simulator
+          schedule:
+            quartz_cron_expression: "0 10 4 * * ?"
+            timezone_id: UTC
+            pause_status: UNPAUSED
+          max_concurrent_runs: 1
+          email_notifications:
+            on_failure:
+              - ${workspace.current_user.userName}
+          environments:
+            - environment_key: simulator
+              spec:
+                environment_version: "2"
+                dependencies:
+                  - pg8000>=1.31,<2
+          tasks:
+            - task_key: simulate_changes
+              environment_key: simulator
+              timeout_seconds: 600
+              spark_python_task:
+                python_file: src/jobs/run_ingester.py
+                parameters:
+                  - ${workspace.file_path}
+                  - ${var.env}
+                  - ingestion.batch.mastr_simulator
 
   prod:
     mode: production

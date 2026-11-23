@@ -1,14 +1,12 @@
-name: MaStR change simulator
+name: MaStR change simulator (manual fallback)
 
-# P3.2: once a day, make a handful of realistic changes to the power-plant register in
-# Neon Postgres (new units, commissioning, upgrades, stops, closures), so the CDC
-# pipeline (P3.3/P3.4) has fresh changes to pick up. GitHub's scheduler is best-effort;
-# a dropped day only means fewer changes, which is harmless here.
+# P3.2: make one day of realistic changes to the power-plant register in Neon Postgres.
+# The daily run is the Databricks job gridpulse_mastr_simulator (04:10 UTC): GitHub's
+# scheduler started this workflow 10 hours late on 2026-11-23. This workflow stays as a
+# manual way to add changes from outside Databricks.
 # Needs the GRIDPULSE_PG_DSN repository secret (Neon direct endpoint, not -pooler).
 
 on:
-  schedule:
-    - cron: "17 3 * * *" # 03:17 UTC daily, before the Databricks refresh at 04:30
   workflow_dispatch:
 
 permissions:

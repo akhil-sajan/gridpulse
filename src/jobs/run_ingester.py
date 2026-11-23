@@ -9,6 +9,8 @@ Usage (as a spark_python_task)::
 - ``module``: e.g. ``ingestion.batch.smard``; its ``main(args)`` is called.
 
 Inside Databricks the Databricks SDK authenticates automatically, so no token is needed.
+The MaStR simulator reads the Neon connection string from the secret scope
+``gridpulse`` (key ``pg_dsn``).
 The task fails when the ingester reports errors (non-zero exit code).
 """
 
@@ -19,7 +21,20 @@ import os
 import sys
 from collections.abc import Sequence
 
-ALLOWED_MODULES = {"ingestion.batch.smard", "ingestion.batch.open_meteo"}
+ALLOWED_MODULES = {
+    "ingestion.batch.smard",
+    "ingestion.batch.open_meteo",
+    "ingestion.batch.mastr_simulator",
+}
+# Modules that talk to Neon Postgres get the connection string from a secret scope.
+NEEDS_PG_DSN = {"ingestion.batch.mastr_simulator"}
+PG_SECRET = ("gridpulse", "pg_dsn")
+
+
+def _load_pg_dsn() -> str:
+    from databricks.sdk.runtime import dbutils
+
+    return dbutils.secrets.get(*PG_SECRET)
 
 
 def run(argv: Sequence[str]) -> int:
@@ -32,6 +47,8 @@ def run(argv: Sequence[str]) -> int:
         sys.path.insert(0, repo_root)
     os.environ["GRIDPULSE_ENV"] = env
     os.environ.setdefault("GRIDPULSE_LANDING_BACKEND", "volume")
+    if module in NEEDS_PG_DSN and not os.environ.get("GRIDPULSE_PG_DSN"):
+        os.environ["GRIDPULSE_PG_DSN"] = _load_pg_dsn()
     return int(importlib.import_module(module).main(list(args)) or 0)
 
 

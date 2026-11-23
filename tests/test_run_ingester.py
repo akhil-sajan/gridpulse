@@ -42,3 +42,25 @@ def test_rejects_unknown_modules_and_missing_args():
         run_ingester.run(["/repo", "dev", "os"])
     with pytest.raises(SystemExit, match="usage"):
         run_ingester.run(["/repo", "dev"])
+
+
+def test_simulator_gets_dsn_from_secret(monkeypatch, tmp_path):
+    import types
+
+    from src.jobs import run_ingester
+
+    calls = {}
+    module = types.ModuleType("ingestion.batch.mastr_simulator")
+
+    def fake_main(args):
+        import os
+
+        calls["dsn"] = os.environ.get("GRIDPULSE_PG_DSN")
+        return 0
+
+    module.main = fake_main
+    monkeypatch.setitem(__import__("sys").modules, "ingestion.batch.mastr_simulator", module)
+    monkeypatch.delenv("GRIDPULSE_PG_DSN", raising=False)
+    monkeypatch.setattr(run_ingester, "_load_pg_dsn", lambda: "postgresql://secret")
+    assert run_ingester.run([str(tmp_path), "dev", "ingestion.batch.mastr_simulator"]) == 0
+    assert calls["dsn"] == "postgresql://secret"

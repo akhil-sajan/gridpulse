@@ -138,11 +138,31 @@ def _JsonSerializer():  # noqa: N802
     return _serializers()[1]()
 
 
+def bootstrap_servers(value: str) -> list[str]:
+    """Clean a bootstrap setting: tolerate spaces, line breaks, quotes and a URL scheme
+    (common slips when pasting it into a secret)."""
+    servers = []
+    for part in value.replace("\n", ",").split(","):
+        part = part.strip().strip("'\"").strip()
+        part = part.split("://", 1)[-1].rstrip("/")
+        if part:
+            servers.append(part)
+    return servers or ["localhost:9092"]
+
+
+def describe_bootstrap(servers: list[str]) -> str:
+    """Safe-to-log shape of the bootstrap list (no host names): count, lengths, ports."""
+    shapes = [
+        f"len={len(s)} port={s.rsplit(':', 1)[-1] if ':' in s else 'MISSING'}" for s in servers
+    ]
+    return f"{len(servers)} server(s): " + "; ".join(shapes)
+
+
 def connection_options(env: dict[str, str]) -> dict[str, Any]:
     """kafka-python connection settings from GRIDPULSE_KAFKA_* environment variables."""
-    security = env.get("GRIDPULSE_KAFKA_SECURITY", "PLAINTEXT")
+    security = env.get("GRIDPULSE_KAFKA_SECURITY", "PLAINTEXT").strip()
     options: dict[str, Any] = {
-        "bootstrap_servers": env.get("GRIDPULSE_KAFKA_BOOTSTRAP", "localhost:9092").split(","),
+        "bootstrap_servers": bootstrap_servers(env.get("GRIDPULSE_KAFKA_BOOTSTRAP", "")),
         "security_protocol": security,
     }
     if security.startswith("SASL"):
@@ -179,7 +199,14 @@ class KafkaSink:
             "key_serializer": _KeySerializer(),
             "value_serializer": _JsonSerializer(),
         }
-        self._producer = KafkaProducer(**options)
+        try:
+            self._producer = KafkaProducer(**options)
+        except Exception as exc:
+            shape = describe_bootstrap(options["bootstrap_servers"])
+            raise RuntimeError(
+                f"Kafka connection failed ({type(exc).__name__}); bootstrap setting has "
+                f"{shape}, security={options['security_protocol']}"
+            ) from exc
 
     def send(self, topic: str, key: str, value: dict) -> None:
         self._producer.send(topic, key=key, value=value)

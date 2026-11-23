@@ -248,3 +248,14 @@ def test_serializers_encode_key_and_compact_json():
     assert isinstance(key, Serializer) and isinstance(value, Serializer)
     assert key.serialize("t", [], "solar") == b"solar"
     assert value.serialize("t", [], {"a": 1, "b": "ü"}) == b'{"a":1,"b":"\\u00fc"}'
+
+
+def test_bootstrap_setting_is_cleaned():
+    from ingestion.producers.events import bootstrap_servers, describe_bootstrap
+
+    host = "abc.any.eu-central-1.mpx.prd.cloud.redpanda.com:9092"
+    for raw in (host, f" {host}\n", f'"{host}"', f"https://{host}/", f"{host},"):
+        assert bootstrap_servers(raw) == [host], raw
+    assert bootstrap_servers("") == ["localhost:9092"]
+    assert describe_bootstrap([host]) == f"1 server(s): len={len(host)} port=9092"
+    assert "MISSING" in describe_bootstrap(["abc.example.com"])

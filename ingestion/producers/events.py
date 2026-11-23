@@ -168,8 +168,10 @@ def connection_options(env: dict[str, str]) -> dict[str, Any]:
     if security.startswith("SASL"):
         options |= {
             "sasl_mechanism": env.get("GRIDPULSE_KAFKA_MECHANISM", "SCRAM-SHA-256"),
-            "sasl_plain_username": env["GRIDPULSE_KAFKA_USERNAME"],
-            "sasl_plain_password": env["GRIDPULSE_KAFKA_PASSWORD"],
+            # Strip: a line break pasted into a GitHub secret becomes part of the value
+            # and makes the broker drop the connection without a clear error.
+            "sasl_plain_username": env["GRIDPULSE_KAFKA_USERNAME"].strip(),
+            "sasl_plain_password": env["GRIDPULSE_KAFKA_PASSWORD"].strip(),
         }
     return options
 
@@ -219,9 +221,16 @@ class KafkaSink:
             self._producer = KafkaProducer(**options)
         except Exception as exc:
             shape = describe_bootstrap(options["bootstrap_servers"])
+            login = ""
+            if "sasl_plain_username" in options:  # lengths only, never the values
+                login = (
+                    f", username length={len(options['sasl_plain_username'])}"
+                    f", password length={len(options['sasl_plain_password'])}"
+                    f", mechanism={options['sasl_mechanism']}"
+                )
             raise RuntimeError(
                 f"Kafka connection failed ({type(exc).__name__}); bootstrap setting has "
-                f"{shape}, security={options['security_protocol']}"
+                f"{shape}, security={options['security_protocol']}{login}"
             ) from exc
 
     def send(self, topic: str, key: str, value: dict) -> None:

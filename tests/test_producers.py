@@ -219,9 +219,10 @@ def test_connection_options_local_and_cloud():
             "GRIDPULSE_KAFKA_BOOTSTRAP": "abc.any.eu-central-1.mpx.prd.cloud.redpanda.com:9092",
             "GRIDPULSE_KAFKA_SECURITY": "SASL_SSL",
             "GRIDPULSE_KAFKA_USERNAME": "gridpulse",
-            "GRIDPULSE_KAFKA_PASSWORD": "secret",
+            "GRIDPULSE_KAFKA_PASSWORD": "secret\n",
         }
     )
+    assert cloud["sasl_plain_password"] == "secret"  # pasted line break removed
     assert cloud["security_protocol"] == "SASL_SSL"
     assert cloud["sasl_mechanism"] == "SCRAM-SHA-256"
     assert cloud["sasl_plain_username"] == "gridpulse"

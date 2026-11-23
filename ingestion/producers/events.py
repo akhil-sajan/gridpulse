@@ -116,6 +116,22 @@ class MemorySink:
         pass
 
 
+def connection_options(env: dict[str, str]) -> dict[str, Any]:
+    """kafka-python connection settings from GRIDPULSE_KAFKA_* environment variables."""
+    security = env.get("GRIDPULSE_KAFKA_SECURITY", "PLAINTEXT")
+    options: dict[str, Any] = {
+        "bootstrap_servers": env.get("GRIDPULSE_KAFKA_BOOTSTRAP", "localhost:9092").split(","),
+        "security_protocol": security,
+    }
+    if security.startswith("SASL"):
+        options |= {
+            "sasl_mechanism": env.get("GRIDPULSE_KAFKA_MECHANISM", "SCRAM-SHA-256"),
+            "sasl_plain_username": env["GRIDPULSE_KAFKA_USERNAME"],
+            "sasl_plain_password": env["GRIDPULSE_KAFKA_PASSWORD"],
+        }
+    return options
+
+
 class KafkaSink:
     """Sends JSON messages to Kafka / Redpanda with kafka-python (pure Python).
 
@@ -133,10 +149,7 @@ class KafkaSink:
     def __init__(self, env: dict[str, str]) -> None:
         from kafka import KafkaProducer
 
-        security = env.get("GRIDPULSE_KAFKA_SECURITY", "PLAINTEXT")
-        options: dict[str, Any] = {
-            "bootstrap_servers": env.get("GRIDPULSE_KAFKA_BOOTSTRAP", "localhost:9092").split(","),
-            "security_protocol": security,
+        options = connection_options(env) | {
             "acks": "all",
             "enable_idempotence": True,
             "linger_ms": 50,
@@ -144,12 +157,6 @@ class KafkaSink:
             "key_serializer": lambda k: k.encode("utf-8"),
             "value_serializer": lambda v: json.dumps(v, separators=(",", ":")).encode("utf-8"),
         }
-        if security.startswith("SASL"):
-            options |= {
-                "sasl_mechanism": env.get("GRIDPULSE_KAFKA_MECHANISM", "SCRAM-SHA-256"),
-                "sasl_plain_username": env["GRIDPULSE_KAFKA_USERNAME"],
-                "sasl_plain_password": env["GRIDPULSE_KAFKA_PASSWORD"],
-            }
         self._producer = KafkaProducer(**options)
 
     def send(self, topic: str, key: str, value: dict) -> None:

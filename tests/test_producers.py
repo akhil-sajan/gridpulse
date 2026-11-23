@@ -204,3 +204,35 @@ def test_negative_meter_value_goes_to_dlq():
     mr.replay(slots, publisher, "r", speed=0)
     assert sink.messages[0][0] == "meters.readings.dlq.v1"
     assert publisher.dead_lettered == 1
+
+
+# --------------------------------------------------------------------------- connection
+
+
+def test_connection_options_local_and_cloud():
+    from ingestion.producers.events import connection_options
+
+    local = connection_options({})
+    assert local == {"bootstrap_servers": ["localhost:9092"], "security_protocol": "PLAINTEXT"}
+    cloud = connection_options(
+        {
+            "GRIDPULSE_KAFKA_BOOTSTRAP": "abc.any.eu-central-1.mpx.prd.cloud.redpanda.com:9092",
+            "GRIDPULSE_KAFKA_SECURITY": "SASL_SSL",
+            "GRIDPULSE_KAFKA_USERNAME": "gridpulse",
+            "GRIDPULSE_KAFKA_PASSWORD": "secret",
+        }
+    )
+    assert cloud["security_protocol"] == "SASL_SSL"
+    assert cloud["sasl_mechanism"] == "SCRAM-SHA-256"
+    assert cloud["sasl_plain_username"] == "gridpulse"
+
+
+def test_all_topics_include_dlqs():
+    from ingestion.producers.kafka_tools import all_topics
+
+    assert all_topics() == [
+        "energy.generation.v1",
+        "energy.generation.dlq.v1",
+        "meters.readings.v1",
+        "meters.readings.dlq.v1",
+    ]

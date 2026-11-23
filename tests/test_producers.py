@@ -239,11 +239,12 @@ def test_all_topics_include_dlqs():
 
 
 def test_serializers_encode_key_and_compact_json():
-    import warnings
+    from kafka.serializer import Serializer
 
     from ingestion.producers.events import _JsonSerializer, _KeySerializer
 
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        assert _KeySerializer().serialize("t", [], "solar") == b"solar"
-        assert _JsonSerializer().serialize("t", [], {"a": 1, "b": "ü"}) == b'{"a":1,"b":"\\u00fc"}'
+    key, value = _KeySerializer(), _JsonSerializer()
+    # Real Serializer subclasses are what kafka-python 3 expects (no deprecation warning).
+    assert isinstance(key, Serializer) and isinstance(value, Serializer)
+    assert key.serialize("t", [], "solar") == b"solar"
+    assert value.serialize("t", [], {"a": 1, "b": "ü"}) == b'{"a":1,"b":"\\u00fc"}'

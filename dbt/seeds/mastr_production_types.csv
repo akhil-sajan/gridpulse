@@ -1,0 +1,16 @@
+unit_type,energy_source,series_name,note
+solar,Solare Strahlungsenergie,solar,
+wind,Wind,wind_onshore,units in the offshore zone (de_awz) become wind_offshore
+biomass,Biomasse,biomass,
+hydro,Wasser,hydro,run-of-river and reservoir; pumped storage is a storage unit
+nuclear,Kernenergie,nuclear,
+combustion,Erdgas,natural_gas,
+combustion,Braunkohle,lignite,
+combustion,Steinkohle,hard_coal,
+combustion,Mineralölprodukte,other_conventional,
+combustion,andere Gase,other_conventional,
+combustion,Wärme,other_conventional,
+combustion,nicht biogener Abfall,other_conventional,
+combustion,Wasserstoff,other_conventional,
+combustion,Speicher,other_conventional,
+storage,Speicher,,not mapped: batteries and pumped hydro can't be told apart without the technology field

@@ -1,0 +1,34 @@
+version: 2
+
+models:
+  - name: int_capacity_monthly
+    description: >
+      Installed capacity at the end of each month since 2020 per state code and SMARD
+      series name, from MaStR units (>= 100 kW one by one, smaller units as sums).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [month_start, region_code, series_name]
+    columns:
+      - name: installed_mw
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+      - name: small_units_mw
+        description: Part of installed_mw that comes from units below 100 kW.
+
+  - name: int_weather_national
+    description: >
+      Germany-wide hourly weather: radiation and cloud cover weighted by solar capacity,
+      wind speed by onshore wind capacity per state and month; temperature a plain average.
+    columns:
+      - name: ts_utc
+        data_tests: [unique, not_null]
+      - name: n_locations
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 1
+                max_value: 16

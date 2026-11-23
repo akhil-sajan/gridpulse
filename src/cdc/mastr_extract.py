@@ -21,6 +21,10 @@ idempotent downstream).
 Limits of watermark CDC: hard deletes are invisible (the register uses status changes
 instead), and several changes to one row between two runs arrive as one final state.
 
+Each run also copies ``public.power_units_small_agg`` (sums of units below 100 kW, P3.5)
+to ``<catalog>.bronze.mastr_small_units_agg`` when the loader has replaced it since the
+last copy.
+
 Run as a Databricks job task (spark_python_task)::
 
     mastr_extract.py <catalog> [--secret-scope gridpulse] [--secret-key pg_dsn]
@@ -84,6 +88,10 @@ CREATE TABLE IF NOT EXISTS {table} (
 )
 COMMENT 'One row per incremental extract run; the latest window_to is the current watermark'
 """
+
+
+SMALL_SOURCE = "public.power_units_small_agg"
+SMALL_TABLE = "mastr_small_units_agg"
 
 
 def pg_timestamp(ts: datetime) -> str:
@@ -164,10 +172,49 @@ def run(catalog: str, scope: str, key: str) -> int:
         "source STRING, window_from TIMESTAMP, window_to TIMESTAMP, rows_extracted BIGINT",
     ).withColumn("run_at", F.current_timestamp()).write.mode("append").saveAsTable(watermarks)
 
+    copy_small_units(spark, options, f"{catalog}.bronze.{SMALL_TABLE}")
+
     print(f"Extracted {rows:,} changed rows for window ({window_from}, {window_to}] into {bronze}")
     if rows:
         written.groupBy("change_source").count().orderBy("change_source").show()
     return 0
+
+
+def copy_small_units(spark, options: dict[str, str], target: str) -> None:
+    """Copy the summary of small units (P3.5) when Postgres holds a newer load.
+
+    It is a snapshot of one MaStR export, replaced as a whole by the loader, so it is
+    copied as a whole too (a few hundred thousand rows), and only when it changed.
+    """
+    from pyspark.sql import functions as F
+
+    try:
+        [[pg_loaded]] = (
+            spark.read.format("jdbc")
+            .options(**options)
+            .option("query", f"SELECT max(loaded_at) AS t FROM {SMALL_SOURCE}")
+            .load()
+            .collect()
+        )
+    except Exception as exc:  # table not created yet: nothing to copy
+        print(f"Small-unit summary not available yet ({type(exc).__name__}); skipped")
+        return
+    if pg_loaded is None:
+        return
+    if spark.catalog.tableExists(target):
+        [[copied]] = spark.sql(f"SELECT max(loaded_at) FROM {target}").collect()
+        if copied is not None and copied >= pg_loaded:
+            print(f"Small-unit summary unchanged (loaded {pg_loaded}); skipped")
+            return
+    snapshot = (
+        spark.read.format("jdbc")
+        .options(**options)
+        .option("dbtable", SMALL_SOURCE)
+        .load()
+        .withColumn("_copied_at", F.current_timestamp())
+    )
+    snapshot.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(target)
+    print(f"Copied small-unit summary (loaded {pg_loaded}) into {target}")
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -2,7 +2,10 @@ version: 2
 
 seeds:
   - name: regions
-    description: German federal states with the weather point used for each (from config/open_meteo.yaml).
+    description: >
+      German federal states with the weather point used for each (from
+      config/open_meteo.yaml), Germany as a whole ('de') and the offshore zone ('de_awz',
+      no weather point). region_name is the state name exactly as the MaStR register writes it.
     config:
       column_types:
         latitude: double
@@ -13,3 +16,7 @@ seeds:
     config:
       column_types:
         holiday_date: date
+  - name: mastr_production_types
+    description: >
+      MaStR unit type + energy source -> SMARD production type (series_name). Empty
+      series_name = deliberately not mapped (see note).

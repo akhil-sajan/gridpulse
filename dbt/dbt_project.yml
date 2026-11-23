@@ -18,6 +18,10 @@ models:
     staging:
       +schema: staging
       +materialized: view
+    intermediate:
+      # Building blocks shared by several marts; not meant for end users.
+      +schema: staging
+      +materialized: table
     marts:
       +schema: gold
       +materialized: table

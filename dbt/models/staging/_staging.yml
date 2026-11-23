@@ -11,6 +11,39 @@ models:
   - name: stg_smard_prices
     description: Day-ahead prices for the DE-LU bidding zone in both published resolutions.
   - name: stg_openmeteo_weather
-    description: Hourly weather per state location plus the national average (region 'de').
+    description: Hourly weather per state location (the national value is int_weather_national).
+  - name: stg_power_plants
+    description: Current version of each MaStR unit >= 100 kW with region and production type.
+    columns:
+      - name: unit_id
+        data_tests: [unique, not_null]
+      - name: region_code
+        description: NULL when the register's state name matches no region (should not happen).
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: series_name
+        description: NULL for units deliberately not mapped (storage) or unknown sources.
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+                where: "unit_type <> 'storage'"
+  - name: stg_small_units
+    description: Sums of MaStR units below 100 kW per cohort, with region and production type.
+    columns:
+      - name: region_code
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+                where: "federal_state IS NOT NULL"
+      - name: series_name
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+                where: "unit_type <> 'storage'"
   - name: stg_production_types
     description: Generation series with category and flags.

@@ -19,8 +19,9 @@ def read(name):
 def test_regions_seed_matches_weather_locations():
     rows = {r["region_code"]: r for r in read("regions.csv")}
     locations = {loc.code: loc for loc in load_config().locations}
-    assert set(rows) == set(locations) | {"de"}
+    assert set(rows) == set(locations) | {"de", "de_awz"}
     assert rows["de"]["is_national"] == "true"
+    assert rows["de_awz"]["is_national"] == "false" and rows["de_awz"]["weather_point"] == ""
     for code, loc in locations.items():
         r = rows[code]
         assert r["region_name"] == loc.state and r["weather_point"] == loc.city
@@ -45,3 +46,24 @@ def test_easter_based_holidays_are_correct():
         assert by_date[date.fromordinal(e.toordinal() + 1)] == "Easter Monday"
         assert by_date[date.fromordinal(e.toordinal() + 39)] == "Ascension Day"
         assert by_date[date.fromordinal(e.toordinal() + 50)] == "Whit Monday"
+
+
+def test_mastr_production_types_cover_loader_types_and_known_series():
+    import ast
+
+    from ingestion.batch.mastr_load import UNIT_FILES
+
+    pipeline = Path(__file__).resolve().parents[1] / "src" / "silver" / "silver_pipeline.py"
+    tree = ast.parse(pipeline.read_text(encoding="utf-8"))
+    series = next(
+        {row[0] for row in ast.literal_eval(node.value)}
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "PRODUCTION_TYPES" for t in node.targets)
+    )
+    rows = read("mastr_production_types.csv")
+    keys = [(r["unit_type"], r["energy_source"]) for r in rows]
+    assert len(keys) == len(set(keys)), "duplicate mapping"
+    assert {r["unit_type"] for r in rows} == set(UNIT_FILES)
+    for r in rows:
+        assert r["series_name"] in series or (r["series_name"] == "" and r["note"]), r

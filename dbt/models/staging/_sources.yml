@@ -31,6 +31,34 @@ sources:
         config:
           freshness: null
       - name: weather_national_hourly
-        description: Germany-wide hourly weather, average of the 16 state locations.
+        description: >
+          Germany-wide hourly weather, plain average of the 16 state locations. No longer
+          used by dbt since P3.5 (see int_weather_national, capacity-weighted).
         config:
           freshness: null
+
+  - name: lakeflow_gold
+    description: Gold tables owned by the Lakeflow pipeline (not by dbt).
+    database: "{{ target.catalog }}"
+    schema: gold
+    tables:
+      - name: dim_power_plant
+        description: >
+          MaStR power plants >= 100 kW, one row per version (SCD Type 2, AUTO CDC).
+          __END_AT IS NULL marks the current version.
+        config:
+          # A daily simulator run changes the register, so the newest version is recent.
+          loaded_at_field: updated_at
+          freshness:
+            warn_after: {count: 2, period: day}
+            error_after: {count: 4, period: day}
+
+  - name: bronze
+    description: Raw copies written by job tasks outside the pipeline.
+    database: "{{ target.catalog }}"
+    schema: bronze
+    tables:
+      - name: mastr_small_units_agg
+        description: >
+          MaStR units below 100 kW, summed by type, energy source, state, status and
+          commissioning/decommissioning month (snapshot of one export, copied from Neon).

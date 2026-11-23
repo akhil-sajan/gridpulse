@@ -46,7 +46,9 @@ models:
         data_tests: [not_null]
 
   - name: dim_region
-    description: The 16 German federal states (one weather point each) and Germany as a whole.
+    description: >
+      The 16 German federal states (one weather point each), Germany as a whole ('de') and
+      the offshore zone in the North and Baltic Seas ('de_awz', no weather point).
     columns:
       - name: region_key
         description: Surrogate key (hash of region_code).
@@ -131,7 +133,9 @@ models:
                 values: [quarterhour, hour]
 
   - name: fact_weather
-    description: Hourly weather per region (16 state points and the national average).
+    description: >
+      Hourly weather per region: 16 state points and the Germany-wide value, weighted by
+      installed solar (radiation, cloud cover) and onshore wind capacity (wind speed).
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -223,3 +227,42 @@ models:
                 max_value: 4
       - name: renewable_share
         description: Renewable share of generation in that hour (0-1).
+
+  - name: fact_installed_capacity
+    description: >
+      Installed capacity (MW) at the end of each month since 2020, per region (16 states
+      and the offshore zone) and production type, from the MaStR register. Storage units
+      are not included (batteries and pumped hydro are not separated in the loaded fields).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [month_key, region_key, production_type_key]
+    columns:
+      - name: month_key
+        description: yyyyMM of the month; capacity is the state at month_end.
+        data_tests: [not_null]
+      - name: region_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_region')
+                field: region_key
+      - name: production_type_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_production_type')
+                field: production_type_key
+      - name: installed_mw
+        description: Installed net capacity at month end (MW).
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+      - name: small_units_mw
+        description: Part of installed_mw from units below 100 kW (summed, not one by one).
+      - name: simulated_mw
+        description: Part of installed_mw from units whose current state comes from the simulator.

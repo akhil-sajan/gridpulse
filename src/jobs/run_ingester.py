@@ -25,16 +25,28 @@ ALLOWED_MODULES = {
     "ingestion.batch.smard",
     "ingestion.batch.open_meteo",
     "ingestion.batch.mastr_simulator",
+    "ingestion.producers.meter_replay",
 }
 # Modules that talk to Neon Postgres get the connection string from a secret scope.
 NEEDS_PG_DSN = {"ingestion.batch.mastr_simulator"}
 PG_SECRET = ("gridpulse", "pg_dsn")
+# Modules that send to Kafka get the Redpanda connection from the same secret scope.
+NEEDS_KAFKA = {"ingestion.producers.meter_replay"}
+KAFKA_SECRETS = {
+    "GRIDPULSE_KAFKA_BOOTSTRAP": "kafka_bootstrap",
+    "GRIDPULSE_KAFKA_USERNAME": "kafka_username",
+    "GRIDPULSE_KAFKA_PASSWORD": "kafka_password",
+}
+
+
+def _secret(key: str) -> str:
+    from databricks.sdk.runtime import dbutils
+
+    return dbutils.secrets.get(PG_SECRET[0], key)
 
 
 def _load_pg_dsn() -> str:
-    from databricks.sdk.runtime import dbutils
-
-    return dbutils.secrets.get(*PG_SECRET)
+    return _secret(PG_SECRET[1])
 
 
 def run(argv: Sequence[str]) -> int:
@@ -49,6 +61,11 @@ def run(argv: Sequence[str]) -> int:
     os.environ.setdefault("GRIDPULSE_LANDING_BACKEND", "volume")
     if module in NEEDS_PG_DSN and not os.environ.get("GRIDPULSE_PG_DSN"):
         os.environ["GRIDPULSE_PG_DSN"] = _load_pg_dsn()
+    if module in NEEDS_KAFKA:
+        os.environ.setdefault("GRIDPULSE_KAFKA_SECURITY", "SASL_SSL")
+        for env_name, key in KAFKA_SECRETS.items():
+            if not os.environ.get(env_name):
+                os.environ[env_name] = _secret(key)
     return int(importlib.import_module(module).main(list(args)) or 0)
 
 

@@ -1,0 +1,42 @@
+name: Stream energy-charts to Kafka
+
+# P4.3: live producer for topic energy.generation.v1 (Redpanda Serverless).
+# Starts every hour and polls energy-charts every 5 minutes for about 55 minutes.
+# GitHub's scheduler is best-effort (runs can start late or be dropped); each poll
+# looks back 3 hours and event IDs are deterministic, so a late or missing run loses
+# no data and resent events are dropped downstream.
+# Needs secrets GRIDPULSE_KAFKA_BOOTSTRAP, GRIDPULSE_KAFKA_USERNAME, GRIDPULSE_KAFKA_PASSWORD.
+
+on:
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch:
+    inputs:
+      polls:
+        description: Number of polls (5 minutes apart)
+        default: "12"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stream-energy-charts
+  cancel-in-progress: false
+
+jobs:
+  produce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    env:
+      GRIDPULSE_KAFKA_BOOTSTRAP: ${{ secrets.GRIDPULSE_KAFKA_BOOTSTRAP }}
+      GRIDPULSE_KAFKA_SECURITY: SASL_SSL
+      GRIDPULSE_KAFKA_USERNAME: ${{ secrets.GRIDPULSE_KAFKA_USERNAME }}
+      GRIDPULSE_KAFKA_PASSWORD: ${{ secrets.GRIDPULSE_KAFKA_PASSWORD }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: "3.11", cache: pip, cache-dependency-path: requirements.txt }
+      - run: pip install -r requirements.txt
+      - name: Poll energy-charts every 5 minutes
+        run: python -m ingestion.producers.energy_charts --interval 300 --max-polls ${{ inputs.polls || '12' }}

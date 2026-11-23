@@ -55,6 +55,52 @@ targets:
                   - ${var.env}
                   - ingestion.batch.mastr_simulator
 
+        # P4.3: replays London smart-meter readings to Redpanda (topic meters.readings.v1).
+        # Like the simulator it stands in for a source system, so it exists only in dev.
+        # No schedule: start it by hand ("Run now with different parameters" to change
+        # the window). Reads the CSV from the landing volume, not from the laptop.
+        meter_replay:
+          name: gridpulse_meter_replay
+          max_concurrent_runs: 1
+          parameters:
+            - name: file
+              default: /Volumes/gridpulse_dev/bronze/landing/reference/london_meters/block_0.csv
+            - name: start
+              default: "2013-01-01"
+            - name: days
+              default: "1"
+            - name: speed
+              default: "1440"
+            - name: max_meters
+              default: "50"
+          environments:
+            - environment_key: producer
+              spec:
+                environment_version: "2"
+                dependencies:
+                  - kafka-python>=3,<4
+                  - fastjsonschema>=2.19,<3
+          tasks:
+            - task_key: replay
+              environment_key: producer
+              timeout_seconds: 3600
+              spark_python_task:
+                python_file: src/jobs/run_ingester.py
+                parameters:
+                  - ${workspace.file_path}
+                  - ${var.env}
+                  - ingestion.producers.meter_replay
+                  - --file
+                  - "{{job.parameters.file}}"
+                  - --start
+                  - "{{job.parameters.start}}"
+                  - --days
+                  - "{{job.parameters.days}}"
+                  - --speed
+                  - "{{job.parameters.speed}}"
+                  - --max-meters
+                  - "{{job.parameters.max_meters}}"
+
   prod:
     mode: production
     variables:

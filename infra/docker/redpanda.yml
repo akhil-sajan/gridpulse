@@ -5,10 +5,11 @@
 #   docker compose -f infra/docker/redpanda.yml down -v   # stop and delete all data
 #
 # Single broker, no authentication: for the laptop only (security PLAINTEXT).
+# Images use "latest" for this local test only; nothing in production depends on them.
 name: gridpulse
 services:
   redpanda:
-    image: docker.redpanda.com/redpandadata/redpanda:v25.2.10
+    image: docker.redpanda.com/redpandadata/redpanda:latest
     container_name: redpanda
     command:
       - redpanda
@@ -25,7 +26,7 @@ services:
       retries: 20
 
   console:
-    image: docker.redpanda.com/redpandadata/console:v3.2.2
+    image: docker.redpanda.com/redpandadata/console:latest
     container_name: redpanda-console
     environment:
       KAFKA_BROKERS: redpanda:29092

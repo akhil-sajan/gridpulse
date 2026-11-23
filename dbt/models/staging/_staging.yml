@@ -18,11 +18,15 @@ models:
       - name: unit_id
         data_tests: [unique, not_null]
       - name: region_code
-        description: NULL when the register's state name matches no region (should not happen).
+        description: >
+          NULL when the register gives no state: units abroad that feed the German grid
+          (e.g. pumped storage and river plants in Austria and Luxembourg). The test warns
+          only about state names that are filled in but match no region.
         data_tests:
           - not_null:
               config:
                 severity: warn
+                where: "federal_state IS NOT NULL"
       - name: series_name
         description: NULL for units deliberately not mapped (storage) or unknown sources.
         data_tests:

@@ -22,6 +22,8 @@ resources:
             path: ../src/gold/power_plant_pipeline.py
         - file:
             path: ../src/silver/stream_silver.py
+        - file:
+            path: ../src/ops/stream_metrics.py
       configuration:
         gridpulse.catalog: ${var.catalog}
         gridpulse.secret_scope: gridpulse

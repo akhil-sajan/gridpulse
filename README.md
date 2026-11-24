@@ -59,6 +59,20 @@ From `gold.fact_installed_capacity` (MaStR power-plant register, export of 22 No
 - **Cross-check:** wind at the end of June 2026 is 80.8 GW (onshore + offshore) against 80.85 GW official. Solar is 111.9 GW against 125.4 GW official; the register's net capacity (inverter limit) is used here, while official solar figures are most likely based on gross module capacity (about 10 % higher).
 - **Rooftops matter:** 54 of the 112 GW of solar come from systems below 100 kW.
 
+### Streaming: latency and throughput
+
+From `ops.stream_metrics` (Kafka on Redpanda Serverless, measured 24 Nov 2026, pipeline started right after sending):
+
+| Measure | p50 | p95 |
+|---|---|---|
+| Producer → broker (Redpanda, `LogAppendTime`) | 0.05 s | 0.05 s |
+| Producer → bronze table (end to end) | 2.9 min | 3.4 min |
+| Throughput (meter replay at 1 day per minute) | 36 messages/s | |
+
+- **The transport is fast; the wait is by design.** Almost all of the ~3 minutes is waiting for the triggered pipeline and serverless start-up. Running the pipeline continuously would cut it to seconds but keep compute running all day; for a portfolio on free tiers the daily refresh is the right trade-off.
+- **Source delay:** energy-charts publishes values about 2 hours after the quarter-hour they describe.
+- **Replays don't double-count:** a third replay of the same day added 2,304 messages to bronze and 0 new events to silver and gold.
+
 ## Data lineage (dbt)
 
 Silver tables (green) flow through staging views into the gold star schema and the answer tables:

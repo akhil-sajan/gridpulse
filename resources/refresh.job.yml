@@ -35,7 +35,9 @@ resources:
               - "4"
         - task_key: ingest_open_meteo_archive
           environment_key: ingest
-          timeout_seconds: 3600
+          # The ingester stops itself after 15 minutes or 3 failures in a row; this is
+          # only the outer safety net (worst case: 15 min + one request's retries).
+          timeout_seconds: 1800
           spark_python_task:
             python_file: ../src/jobs/run_ingester.py
             parameters:

@@ -7,6 +7,7 @@ from datetime import UTC, date, datetime
 import pytest
 
 from ingestion.batch.open_meteo import (
+    Breaker,
     Location,
     Month,
     Pacer,
@@ -238,3 +239,43 @@ def test_location_filter(env):
     settings, config, http, writer, pacer, _ = env
     summary = run_forecast(settings, config, http, writer, pacer, now=NOW, location_codes={"de_he"})
     assert summary.counts["landed"] == 1
+
+
+class DownOpenMeteo(FakeOpenMeteo):
+    """Every request fails, as when the API is unavailable."""
+
+    def get(self, url, params=None, timeout=None):
+        self.calls.append((url, dict(params or {})))
+        return FakeResponse(503, {"error": True})
+
+
+def test_archive_stops_after_consecutive_failures(env, tmp_path):
+    settings, config, _, writer, pacer, _ = env
+    down = DownOpenMeteo()
+    http = HttpClient(HttpSettings(5, 1, 0.0, 0.0, "test"), session=down, sleep=lambda _: None)
+    summary = run_archive(settings, config, http, writer, pacer, now=NOW)
+    # 6 months planned, stopped after 3 failures in a row: 3 requests, not 6.
+    assert len(down.calls) == 3
+    assert summary.counts["stopped_early"] == 3
+    assert any("stopped early (3 failed requests in a row)" in e for e in summary.errors)
+
+
+def test_breaker_resets_on_success_and_enforces_time_limit():
+    t = [0.0]
+    b = Breaker(max_failures=2, max_minutes=1, clock=lambda: t[0])
+    b.failure()
+    b.success()
+    b.failure()
+    assert not b.should_stop()  # failures not in a row
+    t[0] = 61
+    assert b.should_stop() and b.reason == "time limit reached"
+
+
+def test_forecast_stops_when_api_is_down(env):
+    settings, config, _, writer, pacer, _ = env
+    down = DownOpenMeteo()
+    http = HttpClient(HttpSettings(5, 1, 0.0, 0.0, "test"), session=down, sleep=lambda _: None)
+    summary = run_forecast(
+        settings, config, http, writer, pacer, now=NOW, breaker=Breaker(max_failures=1)
+    )
+    assert len(down.calls) == 1 and summary.counts["stopped_early"] == 1

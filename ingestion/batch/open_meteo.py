@@ -245,6 +245,45 @@ class RunSummary:
         return not self.errors
 
 
+MAX_CONSECUTIVE_FAILURES = 3
+DEFAULT_MAX_MINUTES = 15.0
+
+
+class Breaker:
+    """Stops a run early when the API is clearly unavailable or the run takes too long.
+
+    Every planned request is idempotent (missing months are planned again next run), so
+    stopping early only delays data; it never loses any. Without this, a down API cost
+    up to 5 attempts x (30 s timeout + 60 s backoff) per request, and 16 requests ran
+    into the job's 60-minute timeout.
+    """
+
+    def __init__(
+        self,
+        max_failures: int = MAX_CONSECUTIVE_FAILURES,
+        max_minutes: float = DEFAULT_MAX_MINUTES,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.max_failures = max_failures
+        self.deadline = clock() + max_minutes * 60
+        self.clock = clock
+        self.failures_in_a_row = 0
+        self.reason: str | None = None
+
+    def success(self) -> None:
+        self.failures_in_a_row = 0
+
+    def failure(self) -> None:
+        self.failures_in_a_row += 1
+        if self.failures_in_a_row >= self.max_failures:
+            self.reason = f"{self.failures_in_a_row} failed requests in a row"
+
+    def should_stop(self) -> bool:
+        if self.reason is None and self.clock() >= self.deadline:
+            self.reason = "time limit reached"
+        return self.reason is not None
+
+
 def run_archive(
     settings: Settings,
     config: OpenMeteoConfig,
@@ -256,7 +295,9 @@ def run_archive(
     location_codes: set[str] | None = None,
     max_requests: int | None = None,
     dry_run: bool = False,
+    breaker: Breaker | None = None,
 ) -> RunSummary:
+    breaker = breaker or Breaker()
     now = now or datetime.now(UTC)
     today = today or now.date()
     stamp = now.strftime("%Y%m%dT%H%MZ")
@@ -295,6 +336,10 @@ def run_archive(
         return summary
 
     for i, (task, weight) in enumerate(selected, start=1):
+        if breaker.should_stop():
+            summary.counts["stopped_early"] = len(selected) - i + 1
+            summary.errors.append(f"stopped early ({breaker.reason}); rest follows next run")
+            break
         name = archive_file_name(task.location, task.month, None if task.final else stamp)
         try:
             pacer.wait(weight)
@@ -303,7 +348,9 @@ def run_archive(
             result = upload_to_landing(writer, settings, SOURCE, "archive", name, response.content)
         except Exception as exc:  # noqa: BLE001 - collect and report every failure
             summary.errors.append(f"{task.location.code} {task.month.label}: {exc}")
+            breaker.failure()
             continue
+        breaker.success()
         summary.counts[
             "skipped" if result.skipped else ("landed_final" if task.final else "landed_partial")
         ] += 1
@@ -321,7 +368,9 @@ def run_forecast(
     now: datetime | None = None,
     location_codes: set[str] | None = None,
     dry_run: bool = False,
+    breaker: Breaker | None = None,
 ) -> RunSummary:
+    breaker = breaker or Breaker()
     now = now or datetime.now(UTC)
     stamp = now.strftime("%Y%m%dT%H%MZ")
     summary = RunSummary(Counter(), [])
@@ -335,7 +384,11 @@ def run_forecast(
         summary.weight_used = weight * len(locations)
         return summary
 
-    for loc in locations:
+    for n, loc in enumerate(locations):
+        if breaker.should_stop():
+            summary.counts["stopped_early"] = len(locations) - n
+            summary.errors.append(f"stopped early ({breaker.reason}); rest follows next run")
+            break
         try:
             pacer.wait(weight)
             response = http.get(config.forecast_url, params=forecast_params(config, loc))
@@ -350,7 +403,9 @@ def run_forecast(
             )
         except Exception as exc:  # noqa: BLE001
             summary.errors.append(f"{loc.code} forecast: {exc}")
+            breaker.failure()
             continue
+        breaker.success()
         summary.counts["landed"] += 1
     return summary
 
@@ -362,6 +417,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--location", action="append", help="location code, e.g. de_he")
     parser.add_argument("--max-requests", type=int, help="archive: at most this many requests")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--max-minutes",
+        type=float,
+        default=DEFAULT_MAX_MINUTES,
+        help=f"stop starting new requests after this long (default {DEFAULT_MAX_MINUTES:g})",
+    )
     args = parser.parse_args(argv)
 
     settings = load_settings()
@@ -382,10 +443,18 @@ def main(argv: list[str] | None = None) -> int:
             location_codes=codes,
             max_requests=args.max_requests,
             dry_run=args.dry_run,
+            breaker=Breaker(max_minutes=args.max_minutes),
         )
     else:
         summary = run_forecast(
-            settings, config, http, writer, pacer, location_codes=codes, dry_run=args.dry_run
+            settings,
+            config,
+            http,
+            writer,
+            pacer,
+            location_codes=codes,
+            dry_run=args.dry_run,
+            breaker=Breaker(max_minutes=args.max_minutes),
         )
 
     log.info(

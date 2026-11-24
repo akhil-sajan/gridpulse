@@ -20,6 +20,8 @@ resources:
             path: ../src/silver/silver_pipeline.py
         - file:
             path: ../src/gold/power_plant_pipeline.py
+        - file:
+            path: ../src/silver/stream_silver.py
       configuration:
         gridpulse.catalog: ${var.catalog}
         gridpulse.secret_scope: gridpulse

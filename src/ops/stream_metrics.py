@@ -3,9 +3,13 @@
 One row per topic and pipeline update (bronze rows that were stored in the same minute).
 For every message, the timestamps along its way give four durations:
 
-* ``source_delay``  = produced_at - event_ts_utc     (how late the source publishes;
-  energy-charts about 2.5 h; for the 2012-2014 replay it is meaningless and left out)
-* ``broker``        = kafka_timestamp - produced_at   (producer -> Redpanda)
+* ``source_delay``  = produced_at - event_ts_utc     (how late the source publishes,
+  measured on the *first* copy of each event only: the producer re-sends the last 24 h
+  on every run, and a re-send says nothing about the source; for the 2012-2014 replay it
+  is meaningless and left out)
+* ``broker``        = kafka_timestamp - produced_at   (producer -> Redpanda; only
+  meaningful once the topics use ``LogAppendTime``: with the default ``CreateTime`` the
+  Kafka timestamp is set by the producer itself and this is ~0)
 * ``pipeline``      = _ingested_at - kafka_timestamp  (Redpanda -> bronze table)
 * ``end_to_end``    = _ingested_at - produced_at      (our whole path)
 
@@ -21,6 +25,7 @@ about transport, not about unique values.
 """
 
 import dlt
+from pyspark.sql import Window
 from pyspark.sql import functions as F
 
 CATALOG = spark.conf.get("gridpulse.catalog")
@@ -37,22 +42,31 @@ def seconds(later, earlier):
 def timed(table: str, live: bool):
     produced = F.get_json_object("value", "$.produced_at").cast("timestamp")
     event = F.get_json_object("value", "$.event_ts_utc").cast("timestamp")
-    df = spark.read.table(f"{CATALOG}.bronze.{table}").select(
-        "topic",
-        "kafka_timestamp",
-        "_ingested_at",
-        produced.alias("produced_at"),
-        event.alias("event_ts_utc"),
+    event_id = F.get_json_object("value", "$.event_id")
+    first = Window.partitionBy("event_id").orderBy("kafka_timestamp", "offset")
+    df = (
+        spark.read.table(f"{CATALOG}.bronze.{table}")
+        .select(
+            "topic",
+            "offset",
+            "kafka_timestamp",
+            "_ingested_at",
+            event_id.alias("event_id"),
+            produced.alias("produced_at"),
+            event.alias("event_ts_utc"),
+        )
+        .withColumn("is_first_copy", F.row_number().over(first) == 1)
     )
     return df.select(
         "topic",
         F.date_trunc("minute", "_ingested_at").alias("ingested_minute"),
         "kafka_timestamp",
+        "is_first_copy",
         seconds(F.col("kafka_timestamp"), F.col("produced_at")).alias("broker_s"),
         seconds(F.col("_ingested_at"), F.col("kafka_timestamp")).alias("pipeline_s"),
         seconds(F.col("_ingested_at"), F.col("produced_at")).alias("end_to_end_s"),
         (
-            seconds(F.col("produced_at"), F.col("event_ts_utc"))
+            F.when(F.col("is_first_copy"), seconds(F.col("produced_at"), F.col("event_ts_utc")))
             if live
             else F.lit(None).cast("double")
         ).alias("source_delay_s"),
@@ -80,6 +94,7 @@ def stream_metrics():
         union.groupBy("topic", "ingested_minute")
         .agg(
             F.count("*").alias("messages"),
+            F.count_if("is_first_copy").alias("new_events"),
             pct("source_delay_s", 0.5).alias("source_delay_p50_s"),
             pct("broker_s", 0.5).alias("broker_p50_s"),
             pct("broker_s", 0.95).alias("broker_p95_s"),

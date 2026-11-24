@@ -4,6 +4,7 @@ Uses the same ``GRIDPULSE_KAFKA_*`` environment variables as the producers, so n
 CLI (``rpk``) is needed on the laptop.
 
     python -m ingestion.producers.kafka_tools create-topics          # all GridPulse topics
+    python -m ingestion.producers.kafka_tools configure-topics       # LogAppendTime etc.
     python -m ingestion.producers.kafka_tools list
     python -m ingestion.producers.kafka_tools consume energy.generation.v1 -n 3
 """
@@ -19,6 +20,10 @@ from ingestion.producers.events import TOPICS, connection_options, dlq_topic
 
 PARTITIONS = 3
 RETENTION_MS = 7 * 24 * 3600 * 1000  # 7 days
+# The broker stamps each message when it stores it, so kafka_timestamp - produced_at
+# measures the real producer -> broker latency (P4.6). The default, CreateTime, is set
+# by the producer itself and would always be ~0.
+TOPIC_CONFIGS = {"retention.ms": str(RETENTION_MS), "message.timestamp.type": "LogAppendTime"}
 
 
 def all_topics() -> list[str]:
@@ -37,12 +42,7 @@ def create_topics(env: dict[str, str]) -> None:
             try:
                 admin.create_topics(
                     [
-                        NewTopic(
-                            t,
-                            PARTITIONS,
-                            replication_factor=-1,
-                            topic_configs={"retention.ms": str(RETENTION_MS)},
-                        )
+                        NewTopic(t, PARTITIONS, replication_factor=-1, topic_configs=TOPIC_CONFIGS)
                         for t in missing
                     ]
                 )
@@ -52,6 +52,35 @@ def create_topics(env: dict[str, str]) -> None:
             print(f"{'created' if topic in missing else 'exists '}  {topic}")
     finally:
         admin.close()
+
+
+def apply_topic_configs(env: dict[str, str]) -> None:
+    """Set TOPIC_CONFIGS on existing topics and print what the broker now reports."""
+    from kafka.admin import ConfigResource, ConfigResourceType, KafkaAdminClient
+
+    admin = KafkaAdminClient(**connection_options(env))
+    try:
+        resources = [
+            ConfigResource(ConfigResourceType.TOPIC, t, configs=TOPIC_CONFIGS) for t in all_topics()
+        ]
+        admin.alter_configs(resources)
+        described = admin.describe_configs(
+            [ConfigResource(ConfigResourceType.TOPIC, t) for t in all_topics()]
+        )
+        print(_config_summary(described))
+    finally:
+        admin.close()
+
+
+def _config_summary(described) -> str:
+    """Best-effort readable view of describe_configs results across kafka-python versions."""
+    lines = []
+    for response in described if isinstance(described, list) else [described]:
+        for resource in getattr(response, "resources", []) or []:
+            name, entries = resource[3], resource[4]
+            wanted = {e[0]: e[1] for e in entries if e[0] in TOPIC_CONFIGS}
+            lines.append(f"{name}: {wanted}")
+    return "\n".join(lines) or str(described)
 
 
 def list_topics(env: dict[str, str]) -> None:
@@ -97,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("create-topics", help="create all topics (3 partitions, 7-day retention)")
     sub.add_parser("list", help="list topics")
+    sub.add_parser("configure-topics", help="apply retention and LogAppendTime to existing topics")
     c = sub.add_parser("consume", help="print messages from the start of a topic")
     c.add_argument("topic")
     c.add_argument("-n", type=int, default=5)
@@ -108,6 +138,8 @@ def main(argv: list[str] | None = None) -> int:
         create_topics(env)
     elif args.command == "list":
         list_topics(env)
+    elif args.command == "configure-topics":
+        apply_topic_configs(env)
     else:
         consume(env, args.topic, args.n, args.timeout)
     return 0

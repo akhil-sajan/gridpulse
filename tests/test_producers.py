@@ -260,3 +260,10 @@ def test_bootstrap_setting_is_cleaned():
     assert bootstrap_servers("") == ["localhost:9092"]
     assert describe_bootstrap([host]) == f"1 server(s): len={len(host)} port=9092"
     assert "MISSING" in describe_bootstrap(["abc.example.com"])
+
+
+def test_topics_use_broker_timestamps_and_7_day_retention():
+    from ingestion.producers.kafka_tools import TOPIC_CONFIGS
+
+    assert TOPIC_CONFIGS["message.timestamp.type"] == "LogAppendTime"
+    assert TOPIC_CONFIGS["retention.ms"] == str(7 * 24 * 3600 * 1000)

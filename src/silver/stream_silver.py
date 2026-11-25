@@ -130,6 +130,14 @@ def stream_meter_parsed():
     )
 
 
+@dlt.view(name="stream_meter_valid")
+@dlt.expect_all_or_drop(guarded(METER_RULES | {"schema_version_ok": "schema_ok"}))
+def stream_meter_valid():
+    # Expectations are evaluated on what the function returns, so the helper columns
+    # (schema_ok, raw_value) must still be here; they are dropped in the next step.
+    return dlt.read_stream("stream_meter_parsed")
+
+
 @dlt.table(
     name=silver("stream_meter_readings"),
     comment=(
@@ -139,10 +147,9 @@ def stream_meter_parsed():
     table_properties={"quality": "silver"},
     cluster_by=["event_ts_utc"],
 )
-@dlt.expect_all_or_drop(guarded(METER_RULES | {"schema_version_ok": "schema_ok"}))
 def stream_meter_readings():
     return (
-        dlt.read_stream("stream_meter_parsed")
+        dlt.read_stream("stream_meter_valid")
         .drop("raw_value", "schema_version", "schema_ok")
         .withWatermark("event_ts_utc", "30 minutes")
         .dropDuplicatesWithinWatermark(["event_id"])
@@ -189,11 +196,16 @@ def stream_generation_parsed():
     )
 
 
-@dlt.view(name="stream_energy_generation_events")
+@dlt.view(name="stream_generation_valid")
 @dlt.expect_all_or_drop(guarded(GENERATION_RULES | {"schema_version_ok": "schema_ok"}))
+def stream_generation_valid():
+    return dlt.read_stream("stream_generation_parsed")
+
+
+@dlt.view(name="stream_energy_generation_events")
 def stream_energy_generation_events():
     return (
-        dlt.read_stream("stream_generation_parsed")
+        dlt.read_stream("stream_generation_valid")
         .drop("raw_value", "schema_version", "schema_ok")
         # Exact re-sends (same event_id) carry nothing new.
         .withWatermark("produced_at", "1 hour")

@@ -17,3 +17,8 @@ select = ["E", "F", "I", "B", "UP"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-ra"
+
+[tool.coverage.run]
+# Notebook-style pipeline files run only on Databricks (they need dlt and the spark global);
+# their logic is tested through src/utils/transforms.py.
+omit = ["tests/*"]

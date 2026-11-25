@@ -8,11 +8,12 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 PIPELINE = ROOT / "src" / "silver" / "stream_silver.py"
+TRANSFORMS = ROOT / "src" / "utils" / "transforms.py"
 SCHEMAS = ROOT / "ingestion" / "producers" / "schemas"
 
 
-def constant(name):
-    tree = ast.parse(PIPELINE.read_text(encoding="utf-8"))
+def constant(name, path=PIPELINE):
+    tree = ast.parse(path.read_text(encoding="utf-8"))
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(
             isinstance(t, ast.Name) and t.id == name for t in node.targets
@@ -31,7 +32,7 @@ def schema(name: str) -> dict:
 
 def test_envelope_matches_both_contracts():
     for file in ("energy_generation.v1.json", "meter_readings.v1.json"):
-        assert fields(constant("ENVELOPE")) == set(schema(file)["required"])
+        assert fields(constant("ENVELOPE", TRANSFORMS)) == set(schema(file)["required"])
 
 
 def test_payload_schemas_match_contracts():

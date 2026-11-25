@@ -29,11 +29,25 @@ Latency columns (``produced_at``, ``kafka_timestamp``, ``_ingested_at``) are car
 through for the measurements in P4.6.
 """
 
+import sys
 from functools import reduce
 
 import dlt
-from pyspark.sql import Column
 from pyspark.sql import functions as F
+
+# The bundle root (set in bronze.pipeline.yml) makes the shared code in src/utils importable.
+_root = spark.conf.get("gridpulse.repo_root", "")
+if _root and _root not in sys.path:
+    sys.path.insert(0, _root)
+
+from src.utils.transforms import (  # noqa: E402
+    all_pass,
+    dedup_events,
+    failed_rules,
+    guarded,
+    meter_consumption_30min,
+    parse_events,
+)
 
 CATALOG = spark.conf.get("gridpulse.catalog")
 
@@ -46,14 +60,6 @@ def gold(name: str) -> str:
     return f"{CATALOG}.gold.{name}"
 
 
-ENVELOPE = """
-    event_id STRING,
-    event_ts_utc STRING,
-    produced_at STRING,
-    schema_version STRING,
-    source STRING,
-    payload STRING
-"""
 GENERATION_PAYLOAD = """
     country STRING,
     production_type STRING,
@@ -82,51 +88,13 @@ GENERATION_RULES = COMMON_RULES | {
 }
 
 
-def guarded(rules: dict[str, str]) -> dict[str, str]:
-    """A rule that evaluates to NULL counts as broken (e.g. a field that didn't parse)."""
-    return {name: f"coalesce({expr}, false)" for name, expr in rules.items()}
-
-
-def failed_rules(rules: dict[str, str]) -> Column:
-    checks = [F.when(~F.expr(expr), F.lit(name)) for name, expr in guarded(rules).items()]
-    return F.array_compact(F.array(*checks))
-
-
-def all_pass(rules: dict[str, str]) -> Column:
-    return reduce(lambda a, b: a & b, [F.expr(e) for e in guarded(rules).values()])
-
-
-def parsed(bronze_table: str, payload_schema: str, schema_version: str):
-    """Raw rows -> typed columns (envelope + payload), keeping log position and the raw
-    text. Rows that don't parse keep NULLs and fail the rules below (-> quarantine)."""
-    env = F.from_json("value", ENVELOPE)
-    return (
-        dlt.read_stream(bronze_table)
-        .withColumn("e", env)
-        .withColumn("p", F.from_json(F.col("e.payload"), payload_schema))
-        .select(
-            F.col("e.event_id").alias("event_id"),
-            F.col("e.event_ts_utc").cast("timestamp").alias("event_ts_utc"),
-            F.col("e.produced_at").cast("timestamp").alias("produced_at"),
-            F.col("p.*"),
-            F.col("e.schema_version").alias("schema_version"),
-            F.col("value").alias("raw_value"),
-            "kafka_timestamp",
-            "_ingested_at",
-            "topic",
-            "partition",
-            "offset",
-        )
-    )
-
-
 # --------------------------------------------------------------------------- meters
 
 
 @dlt.view(name="stream_meter_parsed")
 def stream_meter_parsed():
-    return parsed("kafka_meter_readings", METER_PAYLOAD, "meters.readings.v1").withColumn(
-        "schema_ok", F.col("schema_version") == "meters.readings.v1"
+    return parse_events(
+        dlt.read_stream("kafka_meter_readings"), METER_PAYLOAD, "meters.readings.v1"
     )
 
 
@@ -148,12 +116,7 @@ def stream_meter_valid():
     cluster_by=["event_ts_utc"],
 )
 def stream_meter_readings():
-    return (
-        dlt.read_stream("stream_meter_valid")
-        .drop("raw_value", "schema_version", "schema_ok")
-        .withWatermark("event_ts_utc", "30 minutes")
-        .dropDuplicatesWithinWatermark(["event_id"])
-    )
+    return dedup_events(dlt.read_stream("stream_meter_valid"), "event_ts_utc", "30 minutes")
 
 
 @dlt.table(
@@ -166,24 +129,7 @@ def stream_meter_readings():
     table_properties={"quality": "gold"},
 )
 def fact_meter_consumption_30min():
-    return (
-        spark.read.table(silver("stream_meter_readings"))
-        .groupBy(F.window("event_ts_utc", "30 minutes").alias("w"))
-        .agg(
-            F.round(F.sum("energy_kwh"), 3).alias("total_kwh"),
-            F.countDistinct("meter_id").alias("meters"),
-            F.count("*").alias("readings"),
-            F.max("_ingested_at").alias("_last_ingested_at"),
-        )
-        .select(
-            F.col("w.start").alias("window_start_utc"),
-            F.col("w.end").alias("window_end_utc"),
-            "total_kwh",
-            "meters",
-            "readings",
-            "_last_ingested_at",
-        )
-    )
+    return meter_consumption_30min(spark.read.table(silver("stream_meter_readings")))
 
 
 # --------------------------------------------------------------------------- generation
@@ -191,8 +137,8 @@ def fact_meter_consumption_30min():
 
 @dlt.view(name="stream_generation_parsed")
 def stream_generation_parsed():
-    return parsed("kafka_energy_generation", GENERATION_PAYLOAD, "energy.generation.v1").withColumn(
-        "schema_ok", F.col("schema_version") == "energy.generation.v1"
+    return parse_events(
+        dlt.read_stream("kafka_energy_generation"), GENERATION_PAYLOAD, "energy.generation.v1"
     )
 
 
@@ -204,13 +150,8 @@ def stream_generation_valid():
 
 @dlt.view(name="stream_energy_generation_events")
 def stream_energy_generation_events():
-    return (
-        dlt.read_stream("stream_generation_valid")
-        .drop("raw_value", "schema_version", "schema_ok")
-        # Exact re-sends (same event_id) carry nothing new.
-        .withWatermark("produced_at", "1 hour")
-        .dropDuplicatesWithinWatermark(["event_id"])
-    )
+    # Exact re-sends (same event_id) carry nothing new.
+    return dedup_events(dlt.read_stream("stream_generation_valid"), "produced_at", "1 hour")
 
 
 dlt.create_streaming_table(

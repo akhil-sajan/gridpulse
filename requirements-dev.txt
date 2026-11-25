@@ -3,3 +3,5 @@ pytest>=8,<9
 pytest-cov>=5,<7
 ruff>=0.6
 python-dateutil>=2.8
+# Local SparkSession for tests/test_transforms.py (P5.3); skipped if missing.
+pyspark>=3.5,<4.1

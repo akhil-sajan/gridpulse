@@ -28,6 +28,8 @@ resources:
             path: ../src/ops/dq_checks.py
       configuration:
         gridpulse.catalog: ${var.catalog}
+        # Bundle root on the workspace: the pipeline files import src/utils/transforms.py (P5.3).
+        gridpulse.repo_root: ${workspace.file_path}
         gridpulse.secret_scope: gridpulse
         # P4.7: false = streams arrive only as files (no connection to Redpanda).
         gridpulse.kafka_enabled: ${var.kafka_enabled}

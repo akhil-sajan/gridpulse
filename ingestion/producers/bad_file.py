@@ -10,7 +10,8 @@ volume, so silver has to catch the problems itself:
 Usage::
 
     python -m ingestion.producers.bad_file bad_test.jsonl
-    databricks fs cp bad_test.jsonl dbfs:/Volumes/gridpulse_dev/bronze/landing/stream/meters_readings_v1/bad_test.jsonl
+    databricks fs cp bad_test.jsonl \
+        dbfs:/Volumes/gridpulse_dev/bronze/landing/stream/meters_readings_v1/bad_test.jsonl
 """
 
 from __future__ import annotations

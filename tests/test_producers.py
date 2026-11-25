@@ -328,3 +328,22 @@ def test_file_folders_match_bronze_pipeline():
     exec(compile(ast.Module([funcs["file_entity"]], []), "x", "exec"), ns)  # noqa: S102
     for topic in [*TOPICS, *(dlq_topic(t) for t in TOPICS)]:
         assert ns["file_entity"](topic) == FileSink.entity(topic)
+
+
+def test_bad_file_breaks_one_rule_each():
+    import json as _json
+
+    from ingestion.producers.bad_file import bad_lines
+
+    lines = [_json.loads(x) for x in bad_lines()]
+    assert len(lines) == 3 and all(x["topic"] == "meters.readings.v1" for x in lines)
+    values = [x["value"] for x in lines]
+    try:
+        _json.loads(values[0])
+        raise AssertionError("first value must not be JSON")
+    except ValueError:
+        pass
+    assert _json.loads(values[1])["payload"]["energy_kwh"] < 0
+    assert _json.loads(values[2])["schema_version"] == "meters.readings.v9"
+    # The producer's own contract check would have rejected both parseable ones.
+    assert validation_error("meters.readings.v1", _json.loads(values[1])) is not None

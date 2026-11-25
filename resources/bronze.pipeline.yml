@@ -24,6 +24,8 @@ resources:
             path: ../src/silver/stream_silver.py
         - file:
             path: ../src/ops/stream_metrics.py
+        - file:
+            path: ../src/ops/dq_checks.py
       configuration:
         gridpulse.catalog: ${var.catalog}
         gridpulse.secret_scope: gridpulse

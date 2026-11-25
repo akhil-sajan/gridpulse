@@ -92,26 +92,32 @@ def file_entity(topic: str) -> str:
 
 
 def from_files(topics: str):
-    paths = ",".join(f"{LANDING_ROOT}/stream/{file_entity(t)}" for t in topics.split(","))
-    reader = (
-        spark.readStream.format("cloudFiles")
-        .option("cloudFiles.format", "json")
-        .schema(FILE_LINE_SCHEMA)
-    )
-    streams = [reader.load(path) for path in paths.split(",")]
+    """Auto Loader over the topic folders. File metadata is read per folder, before the
+    union: the hidden ``_metadata`` column does not survive ``unionByName``."""
+
+    def one(topic: str):
+        return (
+            spark.readStream.format("cloudFiles")
+            .option("cloudFiles.format", "json")
+            .schema(FILE_LINE_SCHEMA)
+            .load(f"{LANDING_ROOT}/stream/{file_entity(topic)}")
+            .select(
+                F.col("topic"),
+                F.lit(None).cast("int").alias("partition"),
+                F.lit(None).cast("bigint").alias("offset"),
+                F.col("_metadata.file_modification_time").alias("kafka_timestamp"),
+                F.col("key"),
+                F.col("value"),
+                F.lit("file").alias("transport"),
+                F.current_timestamp().alias("_ingested_at"),
+            )
+        )
+
+    streams = [one(t) for t in topics.split(",")]
     df = streams[0]
     for other in streams[1:]:
         df = df.unionByName(other)
-    return df.select(
-        F.col("topic"),
-        F.lit(None).cast("int").alias("partition"),
-        F.lit(None).cast("bigint").alias("offset"),
-        F.col("_metadata.file_modification_time").alias("kafka_timestamp"),
-        F.col("key"),
-        F.col("value"),
-        F.lit("file").alias("transport"),
-        F.current_timestamp().alias("_ingested_at"),
-    )
+    return df
 
 
 def define_stream_table(table: str, topics: str, comment: str) -> None:

@@ -4,7 +4,8 @@
 # MAGIC Kafka gives every message in a partition a consecutive offset. If bronze holds every
 # MAGIC message exactly once, then per topic and partition the offsets have no duplicates and
 # MAGIC no holes: `count = max - min + 1`. Bronze is also compared with what the broker
-# MAGIC currently holds (latest offset per partition). Fails the job on any gap.
+# MAGIC Only Kafka rows have offsets; rows from the file fallback (P4.7) are skipped.
+# MAGIC Fails the job on any gap.
 
 # COMMAND ----------
 
@@ -25,6 +26,7 @@ for table in TABLES:
                min(offset) AS first_offset,
                max(offset) AS last_offset
         FROM {catalog}.bronze.{table}
+        WHERE offset IS NOT NULL  -- Kafka rows only; file-fallback rows have no offsets
         GROUP BY topic, partition
         ORDER BY topic, partition
         """

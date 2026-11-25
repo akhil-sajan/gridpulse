@@ -245,6 +245,81 @@ class KafkaSink:
         self._producer.close()
 
 
+class FileSink:
+    """Fallback transport without Kafka (P4.7): micro-batch files in the landing volume.
+
+    Messages are buffered per topic; every ``flush()`` writes one JSON-lines file per
+    topic to ``<landing>/stream/<topic as snake_case>/ingest_date=YYYY-MM-DD/``. Each line
+    is ``{"topic", "key", "value"}`` with ``value`` the same JSON text that would have gone
+    to Kafka, so bronze and everything after it are unchanged. Auto Loader picks the
+    files up; producers flush after every poll or replay step (about once a minute).
+    """
+
+    SOURCE = "stream"
+
+    def __init__(self, writer=None, settings=None, clock=lambda: datetime.now(UTC)) -> None:
+        if settings is None:
+            from ingestion.common.config import load_settings
+
+            settings = load_settings()
+        if writer is None:
+            from ingestion.common.landing import make_writer
+
+            writer = make_writer(settings)
+        self.settings = settings
+        self.writer = writer
+        self.clock = clock
+        self._buffer: dict[str, list[str]] = {}
+        self._seq = 0
+        self.files: list[str] = []
+
+    @staticmethod
+    def entity(topic: str) -> str:
+        """energy.generation.v1 -> energy_generation_v1"""
+        return topic.replace(".", "_").replace("-", "_")
+
+    def send(self, topic: str, key: str, value: dict) -> None:
+        line = json.dumps(
+            {"topic": topic, "key": key, "value": json.dumps(value, separators=(",", ":"))},
+            separators=(",", ":"),
+        )
+        self._buffer.setdefault(topic, []).append(line)
+
+    def flush(self) -> None:
+        from ingestion.common.landing import upload_to_landing
+
+        now = self.clock()
+        for topic, lines in self._buffer.items():
+            if not lines:
+                continue
+            self._seq += 1
+            entity = self.entity(topic)
+            name = f"{entity}_{now:%Y%m%dT%H%M%S%f}Z_{self._seq:05d}.jsonl"
+            data = ("\n".join(lines) + "\n").encode("utf-8")
+            result = upload_to_landing(
+                self.writer, self.settings, self.SOURCE, entity, name, data, ingest_date=now.date()
+            )
+            self.files.append(result.path)
+        self._buffer = {}
+
+    def close(self) -> None:
+        self.flush()
+
+
+def make_sink(env: dict[str, str], dry_run: bool = False) -> Sink:
+    """MemorySink for dry runs, else Kafka or files depending on GRIDPULSE_STREAM_TRANSPORT."""
+    if dry_run:
+        return MemorySink()
+    transport = env.get("GRIDPULSE_STREAM_TRANSPORT", "kafka").strip().lower()
+    if transport == "file":
+        from ingestion.common.config import load_settings
+
+        return FileSink(settings=load_settings(environ=env))
+    if transport == "kafka":
+        return KafkaSink(env)
+    raise ValueError(f"GRIDPULSE_STREAM_TRANSPORT must be kafka or file, not {transport!r}")
+
+
 @dataclass
 class Publisher:
     """Validates each event against its topic's contract and routes it (main topic or DLQ)."""

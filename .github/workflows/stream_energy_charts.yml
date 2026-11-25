@@ -5,7 +5,10 @@ name: Stream energy-charts to Kafka
 # GitHub's scheduler is best-effort: on the first night only 1 of ~8 hourly runs started.
 # So each run looks back 24 hours: any run that happens fills the gaps left by dropped
 # ones. Event IDs are deterministic, so the re-sent events are dropped in silver (P4.5).
-# Needs secrets GRIDPULSE_KAFKA_BOOTSTRAP, GRIDPULSE_KAFKA_USERNAME, GRIDPULSE_KAFKA_PASSWORD.
+# Transport (P4.7): repository variable GRIDPULSE_STREAM_TRANSPORT = kafka (default) or
+# file. "kafka" needs secrets GRIDPULSE_KAFKA_BOOTSTRAP/USERNAME/PASSWORD; "file" writes
+# micro-batch files to the landing volume and needs DATABRICKS_HOST/TOKEN.
+# Switch to "file" before the Redpanda cluster is deleted.
 
 on:
   schedule:
@@ -39,6 +42,10 @@ jobs:
       GRIDPULSE_KAFKA_SECURITY: SASL_SSL
       GRIDPULSE_KAFKA_USERNAME: ${{ secrets.GRIDPULSE_KAFKA_USERNAME }}
       GRIDPULSE_KAFKA_PASSWORD: ${{ secrets.GRIDPULSE_KAFKA_PASSWORD }}
+      GRIDPULSE_STREAM_TRANSPORT: ${{ vars.GRIDPULSE_STREAM_TRANSPORT || 'kafka' }}
+      GRIDPULSE_ENV: dev
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
       PYTHONUNBUFFERED: "1"
       GRIDPULSE_KAFKA_DEBUG: ${{ inputs.debug && '1' || '' }}
     steps:

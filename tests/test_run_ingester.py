@@ -89,3 +89,23 @@ def test_meter_replay_gets_kafka_settings_from_secrets(monkeypatch, tmp_path):
     assert seen["GRIDPULSE_KAFKA_BOOTSTRAP"] == "secret:kafka_bootstrap"
     assert seen["args"] == ["--days", "1"]
     assert os.environ["GRIDPULSE_KAFKA_SECURITY"] == "SASL_SSL"
+
+
+def test_meter_replay_in_file_mode_needs_no_kafka_secrets(monkeypatch, tmp_path):
+    import sys
+    import types
+
+    from src.jobs import run_ingester
+
+    module = types.ModuleType("ingestion.producers.meter_replay")
+    module.main = lambda args: 0
+    monkeypatch.setitem(sys.modules, "ingestion.producers.meter_replay", module)
+    for name in run_ingester.KAFKA_SECRETS:
+        monkeypatch.delenv(name, raising=False)
+
+    def no_secrets(key):
+        raise AssertionError("must not read Kafka secrets in file mode")
+
+    monkeypatch.setattr(run_ingester, "_secret", no_secrets)
+    argv = [str(tmp_path), "dev", "ingestion.producers.meter_replay", "--transport", "file"]
+    assert run_ingester.run(argv) == 0

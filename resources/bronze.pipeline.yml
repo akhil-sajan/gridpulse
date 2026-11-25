@@ -27,5 +27,7 @@ resources:
       configuration:
         gridpulse.catalog: ${var.catalog}
         gridpulse.secret_scope: gridpulse
+        # P4.7: false = streams arrive only as files (no connection to Redpanda).
+        gridpulse.kafka_enabled: ${var.kafka_enabled}
         gridpulse.landing_root: /Volumes/${var.catalog}/bronze/landing
         spark.sql.session.timeZone: UTC

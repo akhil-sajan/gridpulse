@@ -14,6 +14,14 @@ variables:
   env:
     description: GRIDPULSE_ENV passed to the ingesters (dev or prod)
     default: dev
+  kafka_enabled:
+    description: >
+      Read the event streams from Kafka (Redpanda) as well as from landing files.
+      Set to "false" before the Redpanda cluster is deleted (P4.7).
+    default: "true"
+  stream_transport:
+    description: How the meter replay job sends events, kafka or file (P4.7)
+    default: kafka
 
 targets:
   dev:
@@ -73,6 +81,8 @@ targets:
               default: "1440"
             - name: max_meters
               default: "50"
+            - name: transport
+              default: ${var.stream_transport}
           environments:
             - environment_key: producer
               spec:
@@ -100,6 +110,8 @@ targets:
                   - "{{job.parameters.speed}}"
                   - --max-meters
                   - "{{job.parameters.max_meters}}"
+                  - --transport
+                  - "{{job.parameters.transport}}"
 
   prod:
     mode: production

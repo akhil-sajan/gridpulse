@@ -34,7 +34,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from ingestion.common.logs import get_logger
-from ingestion.producers.events import KafkaSink, MemorySink, Publisher, make_event
+from ingestion.producers.events import Publisher, make_event, make_sink
 
 log = get_logger("meter_replay")
 
@@ -122,7 +122,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--speed", type=float, default=1440, help="1440 = one day per minute")
     parser.add_argument("--max-meters", type=int, default=50)
     parser.add_argument("--dry-run", action="store_true", help="print events, don't send")
+    parser.add_argument(
+        "--transport",
+        choices=["kafka", "file"],
+        help="kafka (Redpanda) or file (landing volume); default GRIDPULSE_STREAM_TRANSPORT",
+    )
     args = parser.parse_args(argv)
+    if args.transport:
+        os.environ["GRIDPULSE_STREAM_TRANSPORT"] = args.transport
     if not args.file.is_file():
         parser.error(f"file not found: {args.file}")
 
@@ -140,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     replay_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    sink = MemorySink() if args.dry_run else KafkaSink(dict(os.environ))
+    sink = make_sink(dict(os.environ), dry_run=args.dry_run)
     publisher = Publisher(sink)
     try:
         replay(slots, publisher, replay_id, 0 if args.dry_run else args.speed)

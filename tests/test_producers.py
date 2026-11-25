@@ -267,3 +267,64 @@ def test_topics_use_broker_timestamps_and_7_day_retention():
 
     assert TOPIC_CONFIGS["message.timestamp.type"] == "LogAppendTime"
     assert TOPIC_CONFIGS["retention.ms"] == str(7 * 24 * 3600 * 1000)
+
+
+# --------------------------------------------------------------------------- file fallback
+
+
+def test_file_sink_writes_one_jsonl_file_per_topic_and_flush(tmp_path):
+    import json as _json
+
+    from ingestion.common.config import load_settings
+    from ingestion.common.landing import LocalLandingWriter
+    from ingestion.producers.events import FileSink
+
+    settings = load_settings(
+        environ={"GRIDPULSE_LANDING_BACKEND": "local", "GRIDPULSE_LOCAL_LANDING_DIR": str(tmp_path)}
+    )
+    now = datetime(2026, 11, 25, 15, 0, 1, 123456, tzinfo=UTC)
+    sink = FileSink(writer=LocalLandingWriter(tmp_path), settings=settings, clock=lambda: now)
+    publisher = Publisher(sink)
+    for key, event in ec.to_events(RESPONSE, "de"):
+        publisher.publish(ec.TOPIC, key, event)
+    sink.flush()
+    sink.flush()  # nothing buffered: no empty file
+    assert len(sink.files) == 1
+    path = sink.files[0]
+    assert "/bronze/landing/stream/energy_generation_v1/ingest_date=2026-11-25/" in path
+    assert path.endswith("energy_generation_v1_20261125T150001123456Z_00001.jsonl")
+    lines = (tmp_path / path.lstrip("/")).read_text().splitlines()
+    assert len(lines) == 6
+    first = _json.loads(lines[0])
+    assert first["topic"] == "energy.generation.v1"
+    # value is the exact JSON text that would have gone to Kafka
+    assert _json.loads(first["value"])["schema_version"] == "energy.generation.v1"
+
+
+def test_make_sink_switches_transport():
+    import pytest
+
+    from ingestion.producers.events import FileSink, MemorySink, make_sink
+
+    assert isinstance(make_sink({}, dry_run=True), MemorySink)
+    assert isinstance(
+        make_sink({"GRIDPULSE_STREAM_TRANSPORT": "file", "GRIDPULSE_LANDING_BACKEND": "local"}),
+        FileSink,
+    )
+    with pytest.raises(ValueError):
+        make_sink({"GRIDPULSE_STREAM_TRANSPORT": "pigeon"})
+
+
+def test_file_folders_match_bronze_pipeline():
+    import ast
+    from pathlib import Path
+
+    from ingestion.producers.events import TOPICS, FileSink, dlq_topic
+
+    src = Path(__file__).resolve().parents[1] / "src" / "bronze" / "kafka_bronze.py"
+    tree = ast.parse(src.read_text(encoding="utf-8"))
+    funcs = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+    ns: dict = {}
+    exec(compile(ast.Module([funcs["file_entity"]], []), "x", "exec"), ns)  # noqa: S102
+    for topic in [*TOPICS, *(dlq_topic(t) for t in TOPICS)]:
+        assert ns["file_entity"](topic) == FileSink.entity(topic)

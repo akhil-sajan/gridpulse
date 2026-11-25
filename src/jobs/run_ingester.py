@@ -61,7 +61,10 @@ def run(argv: Sequence[str]) -> int:
     os.environ.setdefault("GRIDPULSE_LANDING_BACKEND", "volume")
     if module in NEEDS_PG_DSN and not os.environ.get("GRIDPULSE_PG_DSN"):
         os.environ["GRIDPULSE_PG_DSN"] = _load_pg_dsn()
-    if module in NEEDS_KAFKA:
+    transport = os.environ.get("GRIDPULSE_STREAM_TRANSPORT", "kafka")
+    if "--transport" in args[:-1]:
+        transport = args[args.index("--transport") + 1]
+    if module in NEEDS_KAFKA and transport == "kafka":
         os.environ.setdefault("GRIDPULSE_KAFKA_SECURITY", "SASL_SSL")
         for env_name, key in KAFKA_SECRETS.items():
             if not os.environ.get(env_name):

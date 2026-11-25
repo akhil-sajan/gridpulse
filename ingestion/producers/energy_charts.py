@@ -33,7 +33,7 @@ from datetime import UTC, datetime, timedelta
 from ingestion.common.config import load_settings
 from ingestion.common.http import HttpClient
 from ingestion.common.logs import get_logger
-from ingestion.producers.events import KafkaSink, MemorySink, Publisher, make_event
+from ingestion.producers.events import Publisher, make_event, make_sink
 
 log = get_logger("energy_charts")
 
@@ -116,10 +116,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--once", action="store_true", help="poll once and exit")
     parser.add_argument("--max-polls", type=int, help="stop after this many polls")
     parser.add_argument("--dry-run", action="store_true", help="print events, don't send")
+    parser.add_argument(
+        "--transport",
+        choices=["kafka", "file"],
+        help="kafka (Redpanda) or file (landing volume); default GRIDPULSE_STREAM_TRANSPORT",
+    )
     args = parser.parse_args(argv)
+    if args.transport:
+        os.environ["GRIDPULSE_STREAM_TRANSPORT"] = args.transport
 
     http = HttpClient(load_settings().http)
-    sink = MemorySink() if args.dry_run else KafkaSink(dict(os.environ))
+    sink = make_sink(dict(os.environ), dry_run=args.dry_run)
     publisher = Publisher(sink)
     lookback = timedelta(hours=args.lookback_hours)
     seen: dict[str, datetime] = {}

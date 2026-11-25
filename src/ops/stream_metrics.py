@@ -20,6 +20,9 @@ The pipeline is triggered, so ``pipeline`` mostly measures how long messages wai
 the next update: minutes when the pipeline is started right after sending, up to a day
 on the daily schedule. The broker part shows what the transport itself costs.
 
+With the file fallback (P4.7), ``kafka_timestamp`` is the file's arrival time in the
+volume, so ``broker`` becomes "producer -> file landed".
+
 Built from bronze (every message that arrived, duplicates included), because latency is
 about transport, not about unique values.
 """
@@ -48,6 +51,7 @@ def timed(table: str, live: bool):
         spark.read.table(f"{CATALOG}.bronze.{table}")
         .select(
             "topic",
+            F.coalesce(F.col("transport"), F.lit("kafka")).alias("transport"),
             "offset",
             "kafka_timestamp",
             "_ingested_at",
@@ -59,6 +63,7 @@ def timed(table: str, live: bool):
     )
     return df.select(
         "topic",
+        "transport",
         F.date_trunc("minute", "_ingested_at").alias("ingested_minute"),
         "kafka_timestamp",
         "is_first_copy",
@@ -91,7 +96,7 @@ def stream_metrics():
     for other in frames[1:]:
         union = union.unionByName(other)
     return (
-        union.groupBy("topic", "ingested_minute")
+        union.groupBy("topic", "transport", "ingested_minute")
         .agg(
             F.count("*").alias("messages"),
             F.count_if("is_first_copy").alias("new_events"),

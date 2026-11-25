@@ -10,6 +10,12 @@ resources:
         timezone_id: UTC
         pause_status: UNPAUSED
       max_concurrent_runs: 1
+      parameters:
+        # P5.2: freshness limits (hours); lower stream_max_age_hours to test the alert.
+        - name: batch_max_age_hours
+          default: "26"
+        - name: stream_max_age_hours
+          default: "12"
       email_notifications:
         on_failure:
           - ${workspace.current_user.userName}
@@ -79,6 +85,18 @@ resources:
             notebook_path: ../src/setup/stream_check.py
             base_parameters:
               catalog: ${var.catalog}
+        - task_key: check_freshness_volume
+          # P5.2: runs even if the pipeline failed (stale data is exactly what it detects).
+          run_if: ALL_DONE
+          depends_on:
+            - task_key: refresh_pipeline
+          notebook_task:
+            notebook_path: ../src/setup/freshness_volume_check.py
+            base_parameters:
+              catalog: ${var.catalog}
+              repo_root: ${workspace.file_path}
+              batch_max_age_hours: "{{job.parameters.batch_max_age_hours}}"
+              stream_max_age_hours: "{{job.parameters.stream_max_age_hours}}"
         - task_key: check_silver
           depends_on:
             - task_key: refresh_pipeline

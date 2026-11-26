@@ -82,8 +82,10 @@ jobs:
 
       - uses: databricks/setup-cli@main
 
-      - name: Bundle validate
-        run: databricks bundle validate -t dev
+      - name: Bundle validate (dev and prod)
+        run: |
+          databricks bundle validate -t dev
+          databricks bundle validate -t prod
 
       # main as it is now (checked out after the bundle check, so it isn't part of it): its manifest tells dbt what the PR changed.
       - uses: actions/checkout@v7

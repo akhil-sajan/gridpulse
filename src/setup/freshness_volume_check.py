@@ -17,10 +17,13 @@ dbutils.widgets.text("catalog", "gridpulse_dev")
 dbutils.widgets.text("repo_root", "")
 dbutils.widgets.text("batch_max_age_hours", "26")
 dbutils.widgets.text("stream_max_age_hours", "12")
+# P5.5: prod has no live stream (the producers feed dev), so it skips the stream checks.
+dbutils.widgets.text("check_stream", "true")
 catalog = dbutils.widgets.get("catalog")
 repo_root = dbutils.widgets.get("repo_root")
 batch_max = float(dbutils.widgets.get("batch_max_age_hours"))
 stream_max = float(dbutils.widgets.get("stream_max_age_hours"))
+check_stream = dbutils.widgets.get("check_stream").strip().lower() == "true"
 if repo_root and repo_root not in sys.path:
     sys.path.insert(0, repo_root)
 
@@ -47,6 +50,9 @@ VOLUME = {
     "silver.openmeteo_weather": "_file_modified_at",
     "bronze.kafka_energy_generation": "_ingested_at",
 }
+if not check_stream:
+    FRESHNESS.pop("bronze.kafka_energy_generation")
+    VOLUME.pop("bronze.kafka_energy_generation")
 
 # COMMAND ----------
 

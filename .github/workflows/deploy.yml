@@ -1,0 +1,59 @@
+name: Deploy
+
+# P5.5 continuous deployment with the Databricks Asset Bundle.
+#   merge to main -> deploy dev, then run the daily job once (incremental, so it only
+#                    processes what's new: the "small date range").
+#   tag v*        -> deploy prod, then run the forecast job and the daily job once.
+#                    Prod schedules stay paused (Free Edition quota), see databricks.yml.
+# Pull requests never deploy; they are checked by ci.yml (required by branch protection).
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    # Notes and docs don't change what runs on Databricks. (Path filters don't apply to
+    # tag pushes, so a tag always deploys.)
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never two deploys of the same target at once.
+concurrency:
+  group: deploy-${{ startsWith(github.ref, 'refs/tags/') && 'prod' || 'dev' }}
+  cancel-in-progress: false
+
+env:
+  DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+  DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+
+jobs:
+  dev:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: databricks/setup-cli@main
+      - name: Deploy dev
+        run: databricks bundle deploy -t dev
+      - name: Run gridpulse_refresh (dev)
+        run: databricks bundle run bronze_refresh -t dev
+
+  prod:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+      - uses: databricks/setup-cli@main
+      - name: Deploy prod (${{ github.ref_name }})
+        run: databricks bundle deploy -t prod
+      # The freshness check expects a recent forecast, so fetch one first.
+      - name: Run gridpulse_forecast (prod)
+        run: databricks bundle run forecast -t prod
+      - name: Run gridpulse_refresh (prod)
+        run: databricks bundle run bronze_refresh -t prod

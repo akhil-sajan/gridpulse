@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -98,3 +99,12 @@ def load_settings(
         )
     except KeyError as missing:
         raise ConfigError(f"Missing setting in {path}: {missing}") from None
+
+
+def start_date_arg(value: str) -> date | None:
+    """argparse type for ``--start-date``: ISO date, or empty for "use the config".
+
+    Jobs always pass the flag (a bundle variable, empty in dev), so an empty string must
+    mean "not set". Used by prod to backfill only a short window (P5.5)."""
+    value = value.strip()
+    return date.fromisoformat(value) if value else None

@@ -33,13 +33,13 @@ import threading
 from collections import Counter
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import yaml
 
-from ingestion.common.config import Settings, load_settings
+from ingestion.common.config import Settings, load_settings, start_date_arg
 from ingestion.common.http import HttpClient, HttpRequestError
 from ingestion.common.landing import LandingWriter, make_writer, upload_to_landing
 from ingestion.common.logs import get_logger
@@ -274,6 +274,12 @@ def run(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Land SMARD weekly files in the landing zone.")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG))
+    parser.add_argument(
+        "--start-date",
+        type=start_date_arg,
+        default=None,
+        help="land data from this date on instead of the config start_date (empty = config)",
+    )
     parser.add_argument("--dataset", action="append", help="limit to a dataset (repeatable)")
     parser.add_argument("--max-files", type=int, help="download at most this many files")
     parser.add_argument("--workers", type=int, default=4)
@@ -282,6 +288,8 @@ def main(argv: list[str] | None = None) -> int:
 
     settings = load_settings()
     config = load_config(args.config)
+    if args.start_date:
+        config = replace(config, start_date=args.start_date)
     log.info("starting", extra={"env": settings.env, "landing_root": settings.landing_root})
 
     summary = run(

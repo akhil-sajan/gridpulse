@@ -22,15 +22,33 @@ variables:
   stream_transport:
     description: How the meter replay job sends events, kafka or file (P4.7)
     default: kafka
+  # P5.5 ------------------------------------------------------------------------
+  warehouse_id:
+    description: SQL warehouse the dbt task runs on (Free Edition has exactly one)
+    lookup:
+      warehouse: Serverless Starter Warehouse
+  schedule_status:
+    description: UNPAUSED runs the daily/3-hourly schedules, PAUSED leaves them manual-only
+    default: UNPAUSED
+  backfill_start:
+    description: >
+      First date the batch ingesters land (empty = start_date from config/*.yaml).
+      Prod sets a recent date so it doesn't download six years of history again.
+    default: ""
+  check_stream:
+    description: >
+      Check freshness/volume of the live stream. The producers feed dev only,
+      so prod (no stream) sets "false".
+    default: "true"
 
 targets:
   dev:
     # Development mode prefixes resource names with "[dev <user>]".
     mode: development
     default: true
-    # Development mode pauses schedules unless a job sets pause_status: UNPAUSED itself.
-    # Dev is the only running environment until prod exists (P5.5), so the ingestion
-    # jobs do that (see resources/refresh.job.yml and resources/forecast.job.yml).
+    # Development mode pauses schedules unless a job sets pause_status itself. Dev is the
+    # running environment (prod is manual-only, see below), so the ingestion jobs set
+    # pause_status: ${var.schedule_status} (UNPAUSED here).
     resources:
       jobs:
         # P3.2: plays the users of the operational database (Neon). It is not part of the
@@ -113,10 +131,19 @@ targets:
                   - --transport
                   - "{{job.parameters.transport}}"
 
+  # P5.5: deployed by GitHub Actions when a version tag (v*) is pushed.
+  # Free Edition allows only 5 concurrent tasks and one active pipeline per type, and has a
+  # daily compute quota, so prod is a manual-only copy: schedules paused, a short backfill,
+  # no live stream (the producers and Redpanda feed dev). Dev keeps running every day.
   prod:
     mode: production
     variables:
       catalog: gridpulse_prod
       env: prod
+      schedule_status: PAUSED
+      backfill_start: "2026-11-02"
+      kafka_enabled: "false"
+      stream_transport: file
+      check_stream: "false"
     workspace:
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

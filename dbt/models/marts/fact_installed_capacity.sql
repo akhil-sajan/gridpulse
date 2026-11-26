@@ -3,7 +3,7 @@
 -- one by one, smaller units as sums (small_units_mw shows how much of the total that is).
 -- simulated_mw = capacity of units whose current state comes from the change simulator.
 SELECT
-    CAST(date_format(c.month_start, 'yyyyMM') AS INT) AS month_key,
+    cast(date_format(c.month_start, 'yyyyMM') AS INT) AS month_key,
     c.month_start,
     last_day(c.month_start) AS month_end,
     {{ dbt_utils.generate_surrogate_key(['c.region_code']) }} AS region_key,

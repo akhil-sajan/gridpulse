@@ -4,8 +4,8 @@
 -- local hour on the October DST day.
 WITH spine AS (
     SELECT explode(sequence(
-        TIMESTAMP'2019-12-01 00:00:00',
-        CAST(add_months(date_trunc('YEAR', current_date()), 24) AS TIMESTAMP) - INTERVAL 15 MINUTES,
+        TIMESTAMP '2019-12-01 00:00:00',
+        cast(add_months(date_trunc('YEAR', current_date()), 24) AS TIMESTAMP) - INTERVAL 15 MINUTES,
         INTERVAL 15 MINUTES
     )) AS ts_utc
 ),
@@ -18,7 +18,7 @@ enriched AS (
 )
 
 SELECT
-    CAST(date_format(e.ts_utc, 'yyyyMMddHHmm') AS BIGINT) AS time_key,
+    cast(date_format(e.ts_utc, 'yyyyMMddHHmm') AS BIGINT) AS time_key,
     e.ts_utc,
     e.ts_local,
     to_date(e.ts_local) AS local_date,

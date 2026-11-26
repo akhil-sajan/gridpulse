@@ -17,16 +17,17 @@ cohorts AS (
     SELECT
         region_code,
         series_name,
-        CAST(date_trunc('MM', commissioning_date) AS DATE) AS commissioning_month,
-        CAST(date_trunc('MM', decommissioning_date) AS DATE) AS decommissioning_month,
+        cast(date_trunc('MM', commissioning_date) AS DATE) AS commissioning_month,
+        cast(date_trunc('MM', decommissioning_date) AS DATE) AS decommissioning_month,
         1 AS units,
         net_capacity_kw,
-        CAST(0 AS DECIMAL(16, 3)) AS small_units_kw,
+        cast(0 AS DECIMAL(16, 3)) AS small_units_kw,
         CASE WHEN change_source = 'simulator' THEN net_capacity_kw ELSE 0 END
             AS simulated_kw
     FROM {{ ref('stg_power_plants') }}
-    WHERE status <> 'In Planung'
-      AND NOT (status = 'Endgültig stillgelegt' AND decommissioning_date IS NULL)
+    WHERE
+        status <> 'In Planung'
+        AND NOT (status = 'Endgültig stillgelegt' AND decommissioning_date IS NULL)
 
     UNION ALL
 
@@ -40,12 +41,13 @@ cohorts AS (
         net_capacity_kw AS small_units_kw,
         0 AS simulated_kw
     FROM {{ ref('stg_small_units') }}
-    WHERE status <> 'In Planung'
-      AND NOT (status = 'Endgültig stillgelegt' AND decommissioning_month IS NULL)
+    WHERE
+        status <> 'In Planung'
+        AND NOT (status = 'Endgültig stillgelegt' AND decommissioning_month IS NULL)
 )
 
 SELECT
-    CAST(m.date_month AS DATE) AS month_start,
+    cast(m.date_month AS DATE) AS month_start,
     c.region_code,
     c.series_name,
     sum(c.units) AS units,
@@ -54,8 +56,10 @@ SELECT
     round(sum(c.simulated_kw) / 1000, 3) AS simulated_mw
 FROM months AS m
 INNER JOIN cohorts AS c
-    ON c.commissioning_month <= CAST(m.date_month AS DATE)
-   AND (c.decommissioning_month IS NULL OR c.decommissioning_month > CAST(m.date_month AS DATE))
-WHERE c.region_code IS NOT NULL
-  AND c.series_name IS NOT NULL
+    ON
+        c.commissioning_month <= cast(m.date_month AS DATE)
+        AND (c.decommissioning_month IS NULL OR c.decommissioning_month > cast(m.date_month AS DATE))
+WHERE
+    c.region_code IS NOT NULL
+    AND c.series_name IS NOT NULL
 GROUP BY 1, 2, 3

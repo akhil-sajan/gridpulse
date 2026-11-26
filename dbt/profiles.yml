@@ -4,7 +4,7 @@
 #   DATABRICKS_HOST       https://dbc-....cloud.databricks.com
 #   DATABRICKS_HTTP_PATH  /sql/1.0/warehouses/<id>   (SQL Warehouses -> Connection details)
 #   DATABRICKS_TOKEN      a Databricks personal access token
-#   DBT_TARGET            dev (default) or prod
+#   DBT_TARGET            dev (default), prod, or ci (pull requests: ci_* schemas in dev)
 gridpulse:
   target: "{{ env_var('DBT_TARGET', 'dev') }}"
   outputs:
@@ -12,6 +12,15 @@ gridpulse:
       type: databricks
       catalog: gridpulse_dev
       schema: gold
+      host: "{{ env_var('DATABRICKS_HOST') | replace('https://', '') | replace('/', '') }}"
+      http_path: "{{ env_var('DATABRICKS_HTTP_PATH') }}"
+      token: "{{ env_var('DATABRICKS_TOKEN') }}"
+      threads: 4
+    # Pull-request builds (P5.4): dev catalog, ci_* schemas (see generate_schema_name).
+    ci:
+      type: databricks
+      catalog: gridpulse_dev
+      schema: ci_gold
       host: "{{ env_var('DATABRICKS_HOST') | replace('https://', '') | replace('/', '') }}"
       http_path: "{{ env_var('DATABRICKS_HTTP_PATH') }}"
       token: "{{ env_var('DATABRICKS_TOKEN') }}"

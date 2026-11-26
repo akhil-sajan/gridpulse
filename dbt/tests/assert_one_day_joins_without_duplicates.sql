@@ -1,7 +1,17 @@
 -- P2.5 done-when: joining generation, price and weather for one day must not multiply rows.
 -- Returns rows (= test fails) if the join produces more rows than generation alone.
-WITH day_keys AS (
-    SELECT time_key FROM {{ ref('dim_time') }} WHERE local_date = DATE'2024-06-15'
+-- The day is the last complete local day with generation data (the newest day is still
+-- filling), so the test works in dev (history since 2020) and in prod (a few weeks).
+WITH test_day AS (
+    SELECT date_sub(max(t.local_date), 1) AS local_date
+    FROM {{ ref('fact_generation') }} AS g
+    JOIN {{ ref('dim_time') }} AS t USING (time_key)
+),
+
+day_keys AS (
+    SELECT t.time_key
+    FROM {{ ref('dim_time') }} AS t
+    JOIN test_day AS d ON t.local_date = d.local_date
 ),
 
 generation AS (

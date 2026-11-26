@@ -51,3 +51,67 @@ jobs:
       # P5.3 gate: the shared helpers must stay at >= 70 % line coverage.
       - name: Coverage gate (src/utils, ingestion/common)
         run: coverage report --include="src/utils/*,ingestion/common/*" --fail-under=70
+
+  # P5.4: SQL lint, bundle check and a "slim" dbt build of only what the PR changed.
+  dbt-and-bundle:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # One PR build at a time: they share the ci_* schemas.
+    concurrency: dbt-ci
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      DO_NOT_TRACK: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dbt.txt
+
+      - name: Install dbt and sqlfluff
+        run: pip install -r requirements-dbt.txt
+
+      - name: SQL lint (sqlfluff)
+        working-directory: dbt
+        run: sqlfluff lint models
+
+      - uses: databricks/setup-cli@main
+
+      - name: Bundle validate
+        run: databricks bundle validate -t dev
+
+      # main as it is now (checked out after the bundle check, so it isn't part of it): its manifest tells dbt what the PR changed.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.base_ref }}
+          path: _main
+
+      - name: Manifest of main (dev target)
+        working-directory: _main/dbt
+        env:
+          DBT_PROFILES_DIR: ${{ github.workspace }}/_main/dbt
+        run: |
+          dbt deps
+          dbt parse --target dev
+
+      # Changed models + everything downstream are built and tested in ci_* schemas.
+      # Unchanged parents are read from the dev tables (--defer), not rebuilt.
+      - name: dbt build (state:modified+)
+        working-directory: dbt
+        env:
+          DBT_PROFILES_DIR: ${{ github.workspace }}/dbt
+        run: |
+          dbt deps
+          dbt build --target ci --select state:modified+ --defer --state ../_main/dbt/target
+
+      - name: Drop ci_* schemas
+        if: always()
+        working-directory: dbt
+        env:
+          DBT_PROFILES_DIR: ${{ github.workspace }}/dbt
+        run: dbt run-operation drop_ci_schemas --target ci || true

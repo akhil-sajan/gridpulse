@@ -21,8 +21,9 @@ weather AS (
         coalesce(k.wind_mw, 0) AS wind_mw
     FROM {{ ref('stg_openmeteo_weather') }} AS w
     LEFT JOIN weights AS k
-        ON k.region_code = w.region_code
-       AND k.month_start = CAST(date_trunc('MM', w.ts_utc) AS DATE)
+        ON
+            k.region_code = w.region_code
+            AND k.month_start = cast(date_trunc('MM', w.ts_utc) AS DATE)
 )
 
 -- Rounded: a weighted mean of values that are all 100 can come out as 100.00000000000001

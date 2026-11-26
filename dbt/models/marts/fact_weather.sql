@@ -9,7 +9,7 @@ WITH weather AS (
 )
 
 SELECT
-    CAST(date_format(w.ts_utc, 'yyyyMMddHHmm') AS BIGINT) AS time_key,
+    cast(date_format(w.ts_utc, 'yyyyMMddHHmm') AS BIGINT) AS time_key,
     {{ dbt_utils.generate_surrogate_key(['w.region_code']) }} AS region_key,
     w.shortwave_radiation AS shortwave_radiation_w_m2,
     w.cloud_cover AS cloud_cover_pct,

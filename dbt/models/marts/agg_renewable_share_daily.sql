@@ -28,7 +28,9 @@ daily_generation AS (
 ),
 
 expected AS (
-    SELECT local_date, count(*) AS expected_quarter_hours
+    SELECT
+        local_date,
+        count(*) AS expected_quarter_hours
     FROM {{ ref('dim_time') }}
     GROUP BY local_date
 ),

@@ -22,4 +22,4 @@ LEFT JOIN {{ ref('regions') }} AS r
     ON r.region_name = p.federal_state AND NOT r.is_national
 LEFT JOIN {{ ref('mastr_production_types') }} AS m
     ON m.unit_type = p.unit_type AND m.energy_source = p.energy_source
-WHERE p.__END_AT IS NULL
+WHERE p.__end_at IS NULL

@@ -33,6 +33,16 @@ def check(label: str, sql: str) -> int:
     return value
 
 
+# Checks against the full year 2024 only make sense where 2024 was loaded. Prod backfills
+# only a few recent weeks (P5.5), so there they are skipped; the other checks still run.
+HAS_2024 = (
+    spark.sql(f"SELECT min(local_date) <= DATE'2024-01-01' FROM {s}.smard_generation").first()[0]
+    is True
+)
+if not HAS_2024:
+    print("(silver starts after 2024-01-01: the full-year-2024 counts are skipped)\n")
+
+
 # COMMAND ----------
 
 print("1. Keys are unique")
@@ -141,7 +151,7 @@ check(
     WHERE a.n <> d.expected AND a.local_date NOT IN (e.first_day, e.last_day)
     """,
 )
-for day, expected in (("2024-03-31", 92), ("2024-10-27", 100)):
+for day, expected in (("2024-03-31", 92), ("2024-10-27", 100)) if HAS_2024 else ():
     check(
         f"solar quarter-hours on {day} minus {expected}",
         f"""SELECT count(*) - {expected} FROM {s}.smard_generation
@@ -180,11 +190,12 @@ check(
     "duplicate hours in weather_national_hourly",
     f"""SELECT count(*) - count(DISTINCT ts_utc) FROM {s}.weather_national_hourly""",
 )
-check(
-    "2024 hours in weather_national_hourly not built from all 16 locations",
-    f"""SELECT 8784 - count_if(n_locations = 16) FROM {s}.weather_national_hourly
+if HAS_2024:
+    check(
+        "2024 hours in weather_national_hourly not built from all 16 locations",
+        f"""SELECT 8784 - count_if(n_locations = 16) FROM {s}.weather_national_hourly
         WHERE year(ts_utc) = 2024""",
-)
+    )
 
 # COMMAND ----------
 

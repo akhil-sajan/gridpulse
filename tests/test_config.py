@@ -48,3 +48,13 @@ def test_missing_setting_is_reported(tmp_path):
 def test_missing_file_is_reported(tmp_path):
     with pytest.raises(ConfigError, match="not found"):
         load_settings(config_path=tmp_path / "nope.yaml", environ={})
+
+
+def test_start_date_arg_empty_means_config():
+    from datetime import date
+
+    from ingestion.common.config import start_date_arg
+
+    assert start_date_arg("") is None
+    assert start_date_arg("  ") is None
+    assert start_date_arg("2026-11-01") == date(2026, 11, 1)

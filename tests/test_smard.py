@@ -224,3 +224,23 @@ def test_download_errors_are_collected_not_raised(env):
     assert not summary.ok
     assert len(summary.errors) == 1 and str(W2) in summary.errors[0]
     assert summary.counts["landed_final"] == 2
+
+
+def test_main_start_date_overrides_config(monkeypatch):
+    """P5.5: prod passes --start-date to backfill only a short window."""
+    from collections import Counter
+    from datetime import date
+
+    from ingestion.batch import smard
+
+    seen = {}
+
+    def fake_run(settings, config, **kwargs):
+        seen["start"] = config.start_date
+        return smard.RunSummary(Counter(), [])
+
+    monkeypatch.setattr(smard, "run", fake_run)
+    assert smard.main(["--start-date", "2026-11-01", "--dry-run"]) == 0
+    assert seen["start"] == date(2026, 11, 1)
+    assert smard.main(["--start-date", "", "--dry-run"]) == 0
+    assert seen["start"] == smard.load_config().start_date

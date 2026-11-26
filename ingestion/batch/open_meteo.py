@@ -38,13 +38,13 @@ import sys
 import time
 from collections import Counter
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import yaml
 
-from ingestion.common.config import Settings, load_settings
+from ingestion.common.config import Settings, load_settings, start_date_arg
 from ingestion.common.http import HttpClient
 from ingestion.common.landing import LandingWriter, make_writer, upload_to_landing
 from ingestion.common.logs import get_logger
@@ -414,6 +414,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Land Open-Meteo weather in the landing zone.")
     parser.add_argument("mode", choices=["archive", "forecast"])
     parser.add_argument("--config", default=str(DEFAULT_CONFIG))
+    parser.add_argument(
+        "--start-date",
+        type=start_date_arg,
+        default=None,
+        help="land data from this date on instead of the config start_date (empty = config)",
+    )
     parser.add_argument("--location", action="append", help="location code, e.g. de_he")
     parser.add_argument("--max-requests", type=int, help="archive: at most this many requests")
     parser.add_argument("--dry-run", action="store_true")
@@ -427,6 +433,8 @@ def main(argv: list[str] | None = None) -> int:
 
     settings = load_settings()
     config = load_config(args.config)
+    if args.start_date:
+        config = replace(config, start_date=args.start_date)
     http = HttpClient(settings.http)
     writer = make_writer(settings)
     pacer = Pacer(config.budget_per_minute)

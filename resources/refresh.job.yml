@@ -1,4 +1,5 @@
-# Daily job: download new SMARD and weather data, refresh bronze and silver, check.
+# Daily job: download new SMARD and weather data, refresh bronze and silver, check, then
+# build gold with dbt (P5.5: gold only runs when the pipeline and the silver checks passed).
 # (The resource key stays "bronze_refresh" so the existing job is kept.)
 resources:
   jobs:
@@ -8,7 +9,7 @@ resources:
       schedule:
         quartz_cron_expression: "0 30 4 * * ?"
         timezone_id: UTC
-        pause_status: UNPAUSED
+        pause_status: ${var.schedule_status}
       max_concurrent_runs: 1
       parameters:
         # P5.2: freshness limits (hours); lower stream_max_age_hours to test the alert.
@@ -27,8 +28,21 @@ resources:
               - requests>=2.32,<3
               - pyyaml>=6,<7
               - databricks-sdk>=0.40
+        - environment_key: dbt
+          spec:
+            environment_version: "2"
+            dependencies:
+              - dbt-databricks>=1.10,<2
       tasks:
+        - task_key: prepare_catalog
+          # P5.5: schemas and the landing volume exist (idempotent; matters for a new prod).
+          notebook_task:
+            notebook_path: ../src/setup/prepare_catalog.py
+            base_parameters:
+              catalog: ${var.catalog}
         - task_key: ingest_smard
+          depends_on:
+            - task_key: prepare_catalog
           environment_key: ingest
           timeout_seconds: 3600
           spark_python_task:
@@ -39,7 +53,11 @@ resources:
               - ingestion.batch.smard
               - --workers
               - "4"
+              - --start-date
+              - ${var.backfill_start}
         - task_key: ingest_open_meteo_archive
+          depends_on:
+            - task_key: prepare_catalog
           environment_key: ingest
           # The ingester stops itself after 15 minutes or 3 failures in a row; this is
           # only the outer safety net (worst case: 15 min + one request's retries).
@@ -51,7 +69,11 @@ resources:
               - ${var.env}
               - ingestion.batch.open_meteo
               - archive
+              - --start-date
+              - ${var.backfill_start}
         - task_key: extract_mastr
+          depends_on:
+            - task_key: prepare_catalog
           # P3.3: changed rows of the power-plant register from Neon Postgres (Spark JDBC,
           # watermark CDC) into bronze.mastr_power_units_changes.
           environment_key: ingest
@@ -97,6 +119,7 @@ resources:
               repo_root: ${workspace.file_path}
               batch_max_age_hours: "{{job.parameters.batch_max_age_hours}}"
               stream_max_age_hours: "{{job.parameters.stream_max_age_hours}}"
+              check_stream: ${var.check_stream}
         - task_key: check_silver
           depends_on:
             - task_key: refresh_pipeline
@@ -104,3 +127,21 @@ resources:
             notebook_path: ../src/setup/silver_check.py
             base_parameters:
               catalog: ${var.catalog}
+        - task_key: dbt_build
+          # P5.5: gold. Default run_if (ALL_SUCCESS): only after the pipeline and the silver
+          # checks succeeded, so gold is never rebuilt from broken silver. A failing dbt
+          # test fails the task and the job sends its failure email.
+          depends_on:
+            - task_key: refresh_pipeline
+            - task_key: check_silver
+          environment_key: dbt
+          timeout_seconds: 3600
+          dbt_task:
+            source: WORKSPACE
+            project_directory: ${workspace.file_path}/dbt
+            warehouse_id: ${var.warehouse_id}
+            catalog: ${var.catalog}
+            schema: gold
+            commands:
+              - dbt deps
+              - dbt build

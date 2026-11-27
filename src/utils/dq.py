@@ -7,6 +7,7 @@ decides. Every check returns a ``Check`` that is written to ``ops.data_quality_c
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from statistics import median
 
 PASS, WARN, FAIL = "pass", "warn", "fail"
 
@@ -35,34 +36,40 @@ def freshness(table: str, age_hours: float | None, max_hours: float) -> Check:
 
 def volume(
     table: str,
-    last_24h: int,
+    day_rows: int,
     previous_days: list[int],
     min_ratio: float = 0.5,
     min_history_days: int = 3,
+    day: str = "last day",
 ) -> Check:
-    """Rows of the last 24 h compared with the average of the previous days.
+    """Rows of one complete *data* day compared with the median of the days before it.
 
-    Fewer than ``min_ratio`` x average fails (a source delivering only partly). With too
-    little history, or an average of zero, there is nothing to compare: a warning, not
-    a failure, so a new table doesn't page anyone.
+    Counting by data day (the day the values describe), not by load time, means a large
+    backfill doesn't distort the baseline: a backfill loads many days at once, but each
+    day still has the same number of rows. The median ignores a single odd day.
+
+    Fewer than ``min_ratio`` x median fails (a source delivering only partly). With too
+    little history, or a median of zero, there is nothing to compare: a warning, not a
+    failure, so a new table doesn't page anyone.
     """
     days = [d for d in previous_days if d is not None]
     if len(days) < min_history_days:
         return Check(
             "volume",
             table,
-            float(last_24h),
+            float(day_rows),
             min_ratio,
             WARN,
-            f"only {len(days)} day(s) of history; {last_24h} rows in the last 24 h",
+            f"only {len(days)} day(s) of history; {day_rows} rows on {day}",
         )
-    average = sum(days) / len(days)
-    if average == 0:
-        return Check("volume", table, float(last_24h), min_ratio, WARN, "7-day average is 0")
-    ratio = last_24h / average
+    baseline = median(days)
+    if baseline == 0:
+        return Check("volume", table, float(day_rows), min_ratio, WARN, "7-day median is 0")
+    ratio = day_rows / baseline
     status = PASS if ratio >= min_ratio else FAIL
     detail = (
-        f"{last_24h} rows vs 7-day average {average:.0f} ({ratio:.0%}, minimum {min_ratio:.0%})"
+        f"{day_rows} rows on {day} vs 7-day median {baseline:.0f} "
+        f"({ratio:.0%}, minimum {min_ratio:.0%})"
     )
     return Check("volume", table, round(ratio, 3), min_ratio, status, detail)
 

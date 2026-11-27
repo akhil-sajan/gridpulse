@@ -1,0 +1,4 @@
+# Copy to terraform.tfvars (git-ignored) and fill in. Not secret, but account-specific.
+databricks_uc_role_arn = "arn:aws:iam::414351767826:role/unity-catalog-prod-UCMasterRole-..."
+databricks_external_id = "<external ID from Catalog -> External data -> Credentials -> gridpulse_landing_cred>"
+budget_email           = "you@example.com"

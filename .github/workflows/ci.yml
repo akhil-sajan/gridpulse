@@ -52,6 +52,21 @@ jobs:
       - name: Coverage gate (src/utils, ingestion/common)
         run: coverage report --include="src/utils/*,ingestion/common/*" --fail-under=70
 
+  # P5.6: Terraform formatting and validation (no AWS access needed).
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v3
+      - name: terraform fmt
+        run: terraform fmt -check -recursive infra/terraform
+      - name: terraform validate
+        run: |
+          for dir in infra/terraform/bootstrap infra/terraform; do
+            terraform -chdir=$dir init -backend=false -input=false
+            terraform -chdir=$dir validate
+          done
+
   # P5.4: SQL lint, bundle check and a "slim" dbt build of only what the PR changed.
   dbt-and-bundle:
     if: github.event_name == 'pull_request'

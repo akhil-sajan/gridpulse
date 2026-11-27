@@ -58,6 +58,8 @@ foreach ($b in $result.budgets) {
     $n = aws budgets describe-notifications-for-budget --account-id $account --budget-name $b.BudgetName | ConvertFrom-Json
     $list = @()
     foreach ($x in $n.Notifications) {
+        # The API leaves ThresholdType out when it is the default (PERCENTAGE).
+        if (-not $x.ThresholdType) { $x | Add-Member -NotePropertyName ThresholdType -NotePropertyValue "PERCENTAGE" -Force }
         $subs = aws budgets describe-subscribers-for-notification --account-id $account `
             --budget-name $b.BudgetName --notification ("NotificationType=" + $x.NotificationType + ",ComparisonOperator=" + $x.ComparisonOperator + ",Threshold=" + $x.Threshold + ",ThresholdType=" + $x.ThresholdType) | ConvertFrom-Json
         $list += [ordered]@{ notification = $x; subscribers = $subs.Subscribers }

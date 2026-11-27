@@ -25,6 +25,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "landing" {
       sse_algorithm = "AES256"
     }
     bucket_key_enabled = false
+    # Customer-provided keys (SSE-C) are refused; S3's default for new buckets since 2026.
+    blocked_encryption_types = ["SSE-C"]
   }
 }
 

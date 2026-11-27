@@ -16,6 +16,17 @@ resource "aws_budgets_budget" "monthly" {
   limit_unit        = "USD"
   time_unit         = "MONTHLY"
   time_period_start = "2026-11-01_00:00"
+  metrics           = ["UnblendedCost"]
+
+  # Count real usage: credits and refunds would hide what the project actually costs.
+  filter_expression {
+    not {
+      dimensions {
+        key    = "RECORD_TYPE"
+        values = ["Credit", "Refund"]
+      }
+    }
+  }
 
   dynamic "notification" {
     for_each = local.budget_alerts

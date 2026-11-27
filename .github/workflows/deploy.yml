@@ -16,6 +16,7 @@ on:
     paths-ignore:
       - "docs/**"
       - "**/*.md"
+      - "infra/**"   # AWS side, managed by Terraform from the laptop (P5.6)
   workflow_dispatch:
 
 permissions:

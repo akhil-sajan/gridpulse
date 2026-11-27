@@ -7,7 +7,8 @@
 # MAGIC
 # MAGIC * **Freshness:** age of the newest data. Batch sources: when the newest file was
 # MAGIC   landed. Live stream: the newest `produced_at`, i.e. whether the producer is alive.
-# MAGIC * **Volume:** rows loaded in the last 24 hours vs the average of the 7 days before.
+# MAGIC * **Volume:** rows of the last complete data day vs the median of the 7 days before
+# MAGIC   it (per data day, not load time, so backfills don't distort the baseline).
 
 # COMMAND ----------
 
@@ -42,17 +43,18 @@ FRESHNESS = {
         stream_max,
     ),
 }
-# table -> column with the load time of each row
+# table -> expression giving the data day of each row (the day the values describe).
 VOLUME = {
-    "silver.smard_generation": "_file_modified_at",
-    "silver.smard_consumption": "_file_modified_at",
-    "silver.smard_prices": "_file_modified_at",
-    "silver.openmeteo_weather": "_file_modified_at",
-    "bronze.kafka_energy_generation": "_ingested_at",
+    "silver.smard_generation": "local_date",
+    "silver.smard_consumption": "local_date",
+    "silver.smard_prices": "local_date",
+    "silver.openmeteo_weather": "local_date",
+    # Deduplicated live stream (bronze holds every re-send, so it can't be counted per day).
+    "silver.stream_energy_generation": "to_date(event_ts_utc)",
 }
 if not check_stream:
     FRESHNESS.pop("bronze.kafka_energy_generation")
-    VOLUME.pop("bronze.kafka_energy_generation")
+    VOLUME.pop("silver.stream_energy_generation")
 
 # COMMAND ----------
 
@@ -64,20 +66,28 @@ for table, (ts_expr, limit) in FRESHNESS.items():
     ).collect()
     checks.append(dq.freshness(table, age, limit))
 
-for table, ts in VOLUME.items():
+for table, day_expr in VOLUME.items():
     rows = spark.sql(
         f"""
-        SELECT CAST(floor((unix_timestamp(current_timestamp()) - unix_timestamp({ts})) / 86400)
-                    AS INT) AS days_ago,
-               count(*) AS n
-        FROM {catalog}.{table}
-        WHERE {ts} >= current_timestamp() - INTERVAL 8 DAYS
-        GROUP BY 1
+        WITH per_day AS (
+          SELECT {day_expr} AS d, count(*) AS n FROM {catalog}.{table} GROUP BY 1
+        ),
+        -- The newest data day is usually still filling; the one before is complete.
+        target AS (SELECT date_sub(max(d), 1) AS d FROM per_day)
+        SELECT p.d, p.n, datediff(t.d, p.d) AS days_before
+        FROM per_day AS p CROSS JOIN target AS t
+        WHERE p.d BETWEEN date_sub(t.d, 7) AND t.d
         """
     ).collect()
-    per_day = {r.days_ago: r.n for r in rows}
+    by_offset = {r.days_before: r.n for r in rows}
+    day = next((str(r.d) for r in rows if r.days_before == 0), "last day")
     checks.append(
-        dq.volume(table, per_day.get(0, 0), [per_day[d] for d in range(1, 8) if d in per_day])
+        dq.volume(
+            table,
+            by_offset.get(0, 0),
+            [by_offset.get(k, 0) for k in range(1, 8) if k in by_offset],
+            day=day,
+        )
     )
 
 # COMMAND ----------

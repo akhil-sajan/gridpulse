@@ -28,6 +28,10 @@ models:
     ml:
       +schema: ml
       +materialized: table
+    ops:
+      # P5.7: reports over Databricks system tables (compute usage).
+      +schema: ops
+      +materialized: view
 
 seeds:
   gridpulse:

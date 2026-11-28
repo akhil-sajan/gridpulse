@@ -346,3 +346,10 @@ A running record of choices made while building GridPulse, and why.
 - **CI:** `terraform fmt -check` and `validate` for both configs on every push and PR (no AWS credentials in GitHub; apply stays on the laptop).
 - **First `terraform plan` caught two gaps before anything was applied:** the budget's "exclude credits and refunds" filter and its `UnblendedCost` metric (set in the console) were not in the code, and the bucket's SSE-C block was implicit. Both are now declared, so the import changes nothing about how the budget counts.
 - **Result (28 Nov 2026):** `bootstrap` created the state bucket (5 resources). Main apply: **6 imported, 3 added, 4 changed, 0 destroyed**. Databricks still lists and writes the landing volume after the role-policy change. The broad `AmazonS3FullAccess` / `IAMFullAccess` and the bootstrap budget policy were then removed (`AttachedPolicies: []`, only `gridpulse-terraform-least-privilege` left), and `terraform plan` with only those narrow rights reports **No changes**. Done.
+
+## P5.7 Cost and usage view
+
+- **Source:** Free Edition exposes `system.billing.usage`, `system.billing.list_prices` and `system.lakeflow.jobs/pipelines`, so usage is measured from Databricks' own metering rather than estimated from run times.
+- **`ops.rpt_compute_usage_daily` (dbt view):** DBUs per day, product and workload since 1 Nov 2026, with job and pipeline names (newest row of the Lakeflow tables), an environment label (dev = `[dev …]` resources, prod = `gridpulse_*`, shared = SQL warehouse, notebooks, predictive optimization) and `list_price_usd` = DBUs × the list price valid at that time. A view, so it is always current; built by the daily `dbt_build`.
+- **List price, not cost:** Free Edition bills nothing; the dollar figure answers "what would this cost on a paid plan" at list price (no discounts).
+- **Attribution limit:** the SQL warehouse is shared by dbt, CI builds and ad-hoc queries, so it is reported as one "shared" workload, not split per model.

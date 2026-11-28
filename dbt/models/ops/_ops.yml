@@ -1,0 +1,38 @@
+version: 2
+
+sources:
+  # Databricks system tables (account-wide usage, read-only).
+  - name: system_billing
+    database: system
+    schema: billing
+    tables:
+      - name: usage
+      - name: list_prices
+  - name: system_lakeflow
+    database: system
+    schema: lakeflow
+    tables:
+      - name: jobs
+      - name: pipelines
+
+models:
+  - name: rpt_compute_usage_daily
+    description: >
+      Daily Databricks compute (DBUs) per product and workload since GridPulse started,
+      with job and pipeline names and the list-price equivalent in USD. Free Edition does
+      not bill; the dollar figure shows what the same usage would cost on a paid plan.
+      environment: dev ([dev ...] resources), prod (gridpulse_*), shared (SQL warehouse,
+      notebooks, predictive optimization).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [usage_date, product, workload, environment]
+    columns:
+      - name: usage_date
+        data_tests: [not_null]
+      - name: workload
+        data_tests: [not_null]
+      - name: dbu
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0

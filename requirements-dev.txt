@@ -5,3 +5,6 @@ ruff>=0.6
 python-dateutil>=2.8
 # Local SparkSession for tests/test_transforms.py (P5.3); skipped if missing.
 pyspark>=3.5,<4.1
+# Solar forecast tests (P6.4)
+scikit-learn>=1.4,<2
+pandas>=2,<4

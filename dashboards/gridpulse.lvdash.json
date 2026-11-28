@@ -4,7 +4,7 @@
       "name": "live_mix",
       "displayName": "Generation mix, last 24 h (live stream)",
       "queryLines": [
-        "SELECT\n    from_utc_timestamp(event_ts_utc, 'Europe/Berlin') AS ts_local,\n    production_type,\n    round(power_mw / 1000, 2) AS power_gw\nFROM silver.stream_energy_generation\nWHERE event_ts_utc >= (SELECT max(event_ts_utc) FROM silver.stream_energy_generation)\n                      - INTERVAL 24 HOURS\n  AND NOT (production_type ILIKE '%load%' OR production_type ILIKE '%share%' OR production_type ILIKE '%trading%' OR production_type ILIKE '%consumption%')\n"
+        "SELECT\n    from_utc_timestamp(event_ts_utc, 'Europe/Berlin') AS ts_local,\n    -- 16 energy-charts types grouped into 8, so every area gets its own colour\n    CASE\n        WHEN production_type ILIKE '%wind%' THEN 'Wind'\n        WHEN production_type ILIKE 'solar%' THEN 'Solar'\n        WHEN production_type ILIKE 'biomass%' THEN 'Biomass'\n        WHEN production_type ILIKE 'hydro%' THEN 'Hydro (incl. pumped storage)'\n        WHEN production_type ILIKE '%lignite%' THEN 'Lignite'\n        WHEN production_type ILIKE '%hard coal%' THEN 'Hard coal'\n        WHEN production_type ILIKE 'fossil gas%' THEN 'Gas'\n        ELSE 'Other (oil, waste, geothermal, ...)'\n    END AS source,\n    round(sum(power_mw) / 1000, 2) AS power_gw\nFROM silver.stream_energy_generation\nWHERE event_ts_utc >= (SELECT max(event_ts_utc) FROM silver.stream_energy_generation)\n                      - INTERVAL 24 HOURS\n  AND NOT (production_type ILIKE '%load%' OR production_type ILIKE '%share%' OR production_type ILIKE '%trading%' OR production_type ILIKE '%consumption%')\nGROUP BY 1, 2\n"
       ]
     },
     {
@@ -89,7 +89,7 @@
             "multilineTextboxSpec": {
               "lines": [
                 "## Germany's power grid, live\n",
-                "Public net generation from energy-charts (Fraunhofer ISE), streamed every few minutes; prices from SMARD; updated by the daily pipeline."
+                "Public net generation from energy-charts (Fraunhofer ISE), sent by the hourly producer; prices from SMARD. The lakehouse is refreshed daily and on every deploy, and energy-charts publishes about 2 hours late, so 'now' means the latest quarter-hour loaded."
               ]
             }
           },
@@ -244,12 +244,12 @@
               "encodings": {
                 "value": {
                   "fieldName": "end_to_end_min",
-                  "displayName": "Stream latency p50, 7 days (min)"
+                  "displayName": "Producer to bronze, median 7 days (min)"
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "Stream latency p50, 7 days (min)"
+                "title": "Producer to bronze, median 7 days (min)"
               }
             }
           },
@@ -318,8 +318,8 @@
                       "expression": "`power_gw`"
                     },
                     {
-                      "name": "production_type",
-                      "expression": "`production_type`"
+                      "name": "source",
+                      "expression": "`source`"
                     }
                   ],
                   "disaggregated": true
@@ -345,7 +345,7 @@
                   "displayName": "GW"
                 },
                 "color": {
-                  "fieldName": "production_type",
+                  "fieldName": "source",
                   "scale": {
                     "type": "categorical"
                   },

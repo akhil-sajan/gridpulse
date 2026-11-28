@@ -354,3 +354,10 @@ A running record of choices made while building GridPulse, and why.
 - **List price, not cost:** Free Edition bills nothing; the dollar figure answers "what would this cost on a paid plan" at list price (no discounts).
 - **Attribution limit:** the SQL warehouse is shared by dbt, CI builds and ad-hoc queries, so it is reported as one "shared" workload, not split per model.
 - **Result (28 Nov 2026):** November (build month) 70.5 DBU ≈ $34 at list price: dev job 20.4, dev pipeline 18.6, SQL warehouse 20.4 (the most expensive per DBU), notebooks + optimization 8.2, prod release runs 2.2. Build days ran 10–14 DBU; steady state estimated at 1–2 DBU/day (~30–60 DBU/month), to be confirmed with December data. Added to the README. Done.
+
+## P6.1 AI/BI dashboard
+
+- **Dashboard as code:** `dashboards/build_dashboard.py` defines the datasets (SQL) and widgets and writes `gridpulse.lvdash.json`; the bundle deploys it (`resources/dashboard.yml`) with every merge and release. Queries name only the schema (`gold.x`), and `dataset_catalog` points them at the target's catalog, so dev and prod each show their own data. A test fails if the JSON is stale, a widget uses a missing dataset or column, or a query names a catalog.
+- **Three pages:** *Live grid* (renewable share, generation, latest price, stream latency, 24-hour generation mix, renewable share per day), *Market* (negative-price hours per month, price vs renewable share per hour, price profile by hour, this year's figures), *Capacity and consumption* (wind + solar capacity per state over time and in the latest month, German grid load and London household load by hour).
+- **Live page reads silver (deviation from "gold only"):** the live stream has no gold layer, so the 24-hour mix and "now" figures come from `silver.stream_energy_generation` and `ops.stream_metrics`. Everything else reads gold.
+- **Speed:** every dataset reads a pre-aggregated gold table (hourly/daily/monthly) or filters a clustered table to the last 24 hours, so each query scans thousands of rows, not millions, on the 2X-Small warehouse.

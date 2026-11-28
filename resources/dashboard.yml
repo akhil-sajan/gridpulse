@@ -1,0 +1,10 @@
+# P6.1: the AI/BI dashboard, kept as code (dashboards/build_dashboard.py writes the JSON).
+# Its queries name schemas only (gold.x, silver.x, ops.x); dataset_catalog points them at
+# this target's catalog, so dev and prod each show their own data.
+resources:
+  dashboards:
+    gridpulse:
+      display_name: GridPulse
+      file_path: ../dashboards/gridpulse.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      dataset_catalog: ${var.catalog}

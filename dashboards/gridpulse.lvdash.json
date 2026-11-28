@@ -1,0 +1,993 @@
+{
+  "datasets": [
+    {
+      "name": "live_mix",
+      "displayName": "Generation mix, last 24 h (live stream)",
+      "queryLines": [
+        "SELECT\n    from_utc_timestamp(event_ts_utc, 'Europe/Berlin') AS ts_local,\n    production_type,\n    round(power_mw / 1000, 2) AS power_gw\nFROM silver.stream_energy_generation\nWHERE event_ts_utc >= (SELECT max(event_ts_utc) FROM silver.stream_energy_generation)\n                      - INTERVAL 24 HOURS\n  AND NOT (production_type ILIKE '%load%' OR production_type ILIKE '%share%' OR production_type ILIKE '%trading%' OR production_type ILIKE '%consumption%')\n"
+      ]
+    },
+    {
+      "name": "live_kpis",
+      "displayName": "Latest values",
+      "queryLines": [
+        "WITH latest AS (\n    SELECT max(event_ts_utc) AS ts FROM silver.stream_energy_generation\n),\nmix AS (\n    SELECT g.production_type, g.power_mw\n    FROM silver.stream_energy_generation AS g JOIN latest AS l ON g.event_ts_utc = l.ts\n    WHERE NOT (g.production_type ILIKE '%load%' OR g.production_type ILIKE '%share%' OR g.production_type ILIKE '%trading%' OR g.production_type ILIKE '%consumption%')\n),\nshare AS (\n    SELECT\n        sum(CASE WHEN production_type ILIKE ANY ('%wind%', '%solar%', '%biomass%',\n                     '%geothermal%', '%run-of-river%', '%reservoir%')\n                 THEN power_mw ELSE 0 END) / nullif(sum(power_mw), 0) AS renewable_share,\n        sum(power_mw) / 1000 AS generation_gw\n    FROM mix\n),\nprice AS (\n    SELECT p.price_eur_mwh, t.ts_local AS price_ts_local\n    FROM gold.fact_price AS p JOIN gold.dim_time AS t USING (time_key)\n    WHERE t.ts_utc <= current_timestamp()\n    QUALIFY row_number() OVER (ORDER BY t.ts_utc DESC) = 1\n),\nlatency AS (\n    SELECT round(percentile_approx(end_to_end_p50_s, 0.5) / 60, 1) AS end_to_end_min\n    FROM ops.stream_metrics\n    WHERE ingested_minute >= current_timestamp() - INTERVAL 7 DAYS\n)\nSELECT\n    from_utc_timestamp(l.ts, 'Europe/Berlin') AS latest_quarter_hour_local,\n    round(s.renewable_share * 100, 1) AS renewable_share_pct,\n    round(s.generation_gw, 1) AS generation_gw,\n    p.price_eur_mwh,\n    lat.end_to_end_min\nFROM latest AS l\nCROSS JOIN share AS s\nCROSS JOIN price AS p\nCROSS JOIN latency AS lat\n"
+      ]
+    },
+    {
+      "name": "renewable_share_daily",
+      "displayName": "Renewable share per day, last 90 days",
+      "queryLines": [
+        "SELECT local_date, round(renewable_share * 100, 1) AS renewable_share_pct\nFROM gold.agg_renewable_share_daily\nWHERE is_complete_day AND local_date >= date_sub(current_date(), 90)\n"
+      ]
+    },
+    {
+      "name": "negative_hours_monthly",
+      "displayName": "Negative-price hours per month",
+      "queryLines": [
+        "SELECT\n    date_trunc('MONTH', local_date) AS month,\n    count_if(avg_price_eur_mwh < 0) AS negative_price_hours\nFROM gold.agg_negative_price_hours\nGROUP BY 1\n"
+      ]
+    },
+    {
+      "name": "price_vs_renewables",
+      "displayName": "Hourly price vs renewable share, last 12 months",
+      "queryLines": [
+        "SELECT\n    round(renewable_share * 100, 1) AS renewable_share_pct,\n    round(avg_price_eur_mwh, 1) AS price_eur_mwh,\n    CASE WHEN is_weekend OR is_public_holiday_de THEN 'Weekend / holiday'\n         ELSE 'Weekday' END AS day_type\nFROM gold.agg_negative_price_hours\nWHERE local_date >= add_months(current_date(), -12) AND renewable_share IS NOT NULL\n"
+      ]
+    },
+    {
+      "name": "price_profile",
+      "displayName": "Average price by hour of day, last 12 months",
+      "queryLines": [
+        "SELECT\n    local_hour,\n    CASE WHEN is_weekend OR is_public_holiday_de THEN 'Weekend / holiday'\n         ELSE 'Weekday' END AS day_type,\n    round(avg(avg_price_eur_mwh), 1) AS avg_price_eur_mwh\nFROM gold.agg_negative_price_hours\nWHERE local_date >= add_months(current_date(), -12)\nGROUP BY 1, 2\n"
+      ]
+    },
+    {
+      "name": "market_kpis",
+      "displayName": "Market figures this year",
+      "queryLines": [
+        "SELECT\n    count_if(avg_price_eur_mwh < 0) AS negative_hours_this_year,\n    round(avg(avg_price_eur_mwh), 1) AS avg_price_this_year,\n    round(min(min_price_eur_mwh), 1) AS lowest_price_this_year\nFROM gold.agg_negative_price_hours\nWHERE year(local_date) = year(current_date())\n"
+      ]
+    },
+    {
+      "name": "capacity_by_state",
+      "displayName": "Installed wind + solar capacity per state",
+      "queryLines": [
+        "SELECT\n    c.month_start,\n    r.region_name,\n    round(sum(c.installed_mw) / 1000, 2) AS installed_gw\nFROM gold.fact_installed_capacity AS c\nJOIN gold.dim_region AS r USING (region_key)\nJOIN gold.dim_production_type AS p USING (production_type_key)\nWHERE p.is_weather_dependent AND NOT r.is_national\nGROUP BY 1, 2\n"
+      ]
+    },
+    {
+      "name": "capacity_latest",
+      "displayName": "Installed capacity by state and type, latest month",
+      "queryLines": [
+        "SELECT\n    r.region_name,\n    p.name_en AS production_type,\n    round(sum(c.installed_mw) / 1000, 2) AS installed_gw\nFROM gold.fact_installed_capacity AS c\nJOIN gold.dim_region AS r USING (region_key)\nJOIN gold.dim_production_type AS p USING (production_type_key)\nWHERE p.is_weather_dependent AND NOT r.is_national\n  AND c.month_start = (SELECT max(month_start) FROM gold.fact_installed_capacity)\nGROUP BY 1, 2\n"
+      ]
+    },
+    {
+      "name": "grid_load_profile",
+      "displayName": "German grid load by hour of day, last 12 months",
+      "queryLines": [
+        "SELECT\n    local_hour,\n    CASE WHEN is_weekend OR is_public_holiday_de THEN 'Weekend / holiday'\n         ELSE 'Weekday' END AS day_type,\n    round(avg(grid_load_mwh) / 1000, 1) AS avg_load_gw\nFROM gold.agg_negative_price_hours\nWHERE local_date >= add_months(current_date(), -12)\nGROUP BY 1, 2\n"
+      ]
+    },
+    {
+      "name": "household_profile",
+      "displayName": "Household consumption by hour (London smart meters, replayed stream)",
+      "queryLines": [
+        "SELECT\n    hour(window_start_utc) AS hour_of_day,\n    round(sum(total_kwh) / sum(readings) * 2, 3) AS avg_kw_per_household\nFROM gold.fact_meter_consumption_30min\nGROUP BY 1\n"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "live",
+      "displayName": "Live grid",
+      "layout": [
+        {
+          "widget": {
+            "name": "live_intro",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Germany's power grid, live\n",
+                "Public net generation from energy-charts (Fraunhofer ISE), streamed every few minutes; prices from SMARD; updated by the daily pipeline."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_share",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "live_kpis",
+                  "fields": [
+                    {
+                      "name": "renewable_share_pct",
+                      "expression": "`renewable_share_pct`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "renewable_share_pct",
+                  "displayName": "Renewable share now (%)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Renewable share now (%)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_gen",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "live_kpis",
+                  "fields": [
+                    {
+                      "name": "generation_gw",
+                      "expression": "`generation_gw`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "generation_gw",
+                  "displayName": "Generation now (GW)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Generation now (GW)"
+              }
+            }
+          },
+          "position": {
+            "x": 1,
+            "y": 2,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_price",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "live_kpis",
+                  "fields": [
+                    {
+                      "name": "price_eur_mwh",
+                      "expression": "`price_eur_mwh`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "price_eur_mwh",
+                  "displayName": "Latest price (EUR/MWh)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Latest price (EUR/MWh)"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 2,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_latency",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "live_kpis",
+                  "fields": [
+                    {
+                      "name": "end_to_end_min",
+                      "expression": "`end_to_end_min`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "end_to_end_min",
+                  "displayName": "Stream latency p50, 7 days (min)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Stream latency p50, 7 days (min)"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_asof",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "live_kpis",
+                  "fields": [
+                    {
+                      "name": "latest_quarter_hour_local",
+                      "expression": "`latest_quarter_hour_local`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "latest_quarter_hour_local",
+                  "displayName": "Latest quarter-hour (Berlin)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Latest quarter-hour (Berlin)"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "live_mix_area",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "live_mix",
+                  "fields": [
+                    {
+                      "name": "ts_local",
+                      "expression": "`ts_local`"
+                    },
+                    {
+                      "name": "power_gw",
+                      "expression": "`power_gw`"
+                    },
+                    {
+                      "name": "production_type",
+                      "expression": "`production_type`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "area",
+              "encodings": {
+                "x": {
+                  "fieldName": "ts_local",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Time (Berlin)"
+                },
+                "y": {
+                  "fieldName": "power_gw",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "GW"
+                },
+                "color": {
+                  "fieldName": "production_type",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Source"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Generation mix, last 24 h (GW)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "share_line",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "renewable_share_daily",
+                  "fields": [
+                    {
+                      "name": "local_date",
+                      "expression": "`local_date`"
+                    },
+                    {
+                      "name": "renewable_share_pct",
+                      "expression": "`renewable_share_pct`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "local_date",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Day"
+                },
+                "y": {
+                  "fieldName": "renewable_share_pct",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "%"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Renewable share of generation per day (%)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 13,
+            "width": 6,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "market",
+      "displayName": "Market",
+      "layout": [
+        {
+          "widget": {
+            "name": "kpi_neg",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "market_kpis",
+                  "fields": [
+                    {
+                      "name": "negative_hours_this_year",
+                      "expression": "`negative_hours_this_year`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "negative_hours_this_year",
+                  "displayName": "Negative-price hours this year"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Negative-price hours this year"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_avg",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "market_kpis",
+                  "fields": [
+                    {
+                      "name": "avg_price_this_year",
+                      "expression": "`avg_price_this_year`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "avg_price_this_year",
+                  "displayName": "Average price this year (EUR/MWh)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Average price this year (EUR/MWh)"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 0,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_min",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "market_kpis",
+                  "fields": [
+                    {
+                      "name": "lowest_price_this_year",
+                      "expression": "`lowest_price_this_year`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "lowest_price_this_year",
+                  "displayName": "Lowest hourly price this year (EUR/MWh)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Lowest hourly price this year (EUR/MWh)"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 0,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "neg_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "negative_hours_monthly",
+                  "fields": [
+                    {
+                      "name": "month",
+                      "expression": "`month`"
+                    },
+                    {
+                      "name": "negative_price_hours",
+                      "expression": "`negative_price_hours`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "month",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Month"
+                },
+                "y": {
+                  "fieldName": "negative_price_hours",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Hours"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Negative-price hours per month"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "scatter",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "price_vs_renewables",
+                  "fields": [
+                    {
+                      "name": "renewable_share_pct",
+                      "expression": "`renewable_share_pct`"
+                    },
+                    {
+                      "name": "price_eur_mwh",
+                      "expression": "`price_eur_mwh`"
+                    },
+                    {
+                      "name": "day_type",
+                      "expression": "`day_type`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "scatter",
+              "encodings": {
+                "x": {
+                  "fieldName": "renewable_share_pct",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Renewable share (%)"
+                },
+                "y": {
+                  "fieldName": "price_eur_mwh",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Price (EUR/MWh)"
+                },
+                "color": {
+                  "fieldName": "day_type",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Day"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "More renewables, lower prices (hourly, last 12 months)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 9,
+            "width": 3,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "profile",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "price_profile",
+                  "fields": [
+                    {
+                      "name": "local_hour",
+                      "expression": "`local_hour`"
+                    },
+                    {
+                      "name": "avg_price_eur_mwh",
+                      "expression": "`avg_price_eur_mwh`"
+                    },
+                    {
+                      "name": "day_type",
+                      "expression": "`day_type`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "local_hour",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Hour (Berlin)"
+                },
+                "y": {
+                  "fieldName": "avg_price_eur_mwh",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "EUR/MWh"
+                },
+                "color": {
+                  "fieldName": "day_type",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Day"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Average price by hour of day (last 12 months)"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 9,
+            "width": 3,
+            "height": 8
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "capacity",
+      "displayName": "Capacity and consumption",
+      "layout": [
+        {
+          "widget": {
+            "name": "cap_area",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "capacity_by_state",
+                  "fields": [
+                    {
+                      "name": "month_start",
+                      "expression": "`month_start`"
+                    },
+                    {
+                      "name": "installed_gw",
+                      "expression": "`installed_gw`"
+                    },
+                    {
+                      "name": "region_name",
+                      "expression": "`region_name`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "area",
+              "encodings": {
+                "x": {
+                  "fieldName": "month_start",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Month"
+                },
+                "y": {
+                  "fieldName": "installed_gw",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "GW"
+                },
+                "color": {
+                  "fieldName": "region_name",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "State"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Installed wind + solar per state (GW, end of month)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "cap_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "capacity_latest",
+                  "fields": [
+                    {
+                      "name": "region_name",
+                      "expression": "`region_name`"
+                    },
+                    {
+                      "name": "installed_gw",
+                      "expression": "`installed_gw`"
+                    },
+                    {
+                      "name": "production_type",
+                      "expression": "`production_type`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "region_name",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "State"
+                },
+                "y": {
+                  "fieldName": "installed_gw",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "GW"
+                },
+                "color": {
+                  "fieldName": "production_type",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Type"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Wind and solar by state, latest month (GW)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "load_profile",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "grid_load_profile",
+                  "fields": [
+                    {
+                      "name": "local_hour",
+                      "expression": "`local_hour`"
+                    },
+                    {
+                      "name": "avg_load_gw",
+                      "expression": "`avg_load_gw`"
+                    },
+                    {
+                      "name": "day_type",
+                      "expression": "`day_type`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "local_hour",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Hour (Berlin)"
+                },
+                "y": {
+                  "fieldName": "avg_load_gw",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "GW"
+                },
+                "color": {
+                  "fieldName": "day_type",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Day"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "German grid load by hour of day (GW, last 12 months)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 15,
+            "width": 3,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "household",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "household_profile",
+                  "fields": [
+                    {
+                      "name": "hour_of_day",
+                      "expression": "`hour_of_day`"
+                    },
+                    {
+                      "name": "avg_kw_per_household",
+                      "expression": "`avg_kw_per_household`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "hour_of_day",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Hour (UTC)"
+                },
+                "y": {
+                  "fieldName": "avg_kw_per_household",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "kW"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Household load by hour (kW, London smart meters)"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 15,
+            "width": 3,
+            "height": 7
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    }
+  ]
+}

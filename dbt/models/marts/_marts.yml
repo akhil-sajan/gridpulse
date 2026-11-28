@@ -266,3 +266,23 @@ models:
         description: Part of installed_mw from units below 100 kW (summed, not one by one).
       - name: simulated_mw
         description: Part of installed_mw from units whose current state comes from the simulator.
+
+  - name: agg_market_hourly
+    description: >
+      One row per UTC hour with a day-ahead price (all hours): average and minimum price,
+      generation, renewable share and grid load, with Berlin local hour and a
+      weekend/holiday flag. Feeds the dashboard's market and load charts.
+    columns:
+      - name: hour_utc
+        data_tests: [unique, not_null]
+      - name: avg_price_eur_mwh
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: -500
+              max_value: 4000
+      - name: renewable_share
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 1

@@ -90,10 +90,8 @@ WHERE is_complete_day AND local_date >= date_sub(current_date(), 90)
     "negative_hours_monthly": (
         "Negative-price hours per month",
         """
-SELECT
-    date_trunc('MONTH', local_date) AS month,
-    count_if(avg_price_eur_mwh < 0) AS negative_price_hours
-FROM gold.agg_negative_price_hours
+SELECT date_trunc('MONTH', local_date) AS month, count_if(is_negative_hour) AS negative_price_hours
+FROM gold.agg_market_hourly
 GROUP BY 1
 """,
     ),
@@ -103,9 +101,8 @@ GROUP BY 1
 SELECT
     round(renewable_share * 100, 1) AS renewable_share_pct,
     round(avg_price_eur_mwh, 1) AS price_eur_mwh,
-    CASE WHEN is_weekend OR is_public_holiday_de THEN 'Weekend / holiday'
-         ELSE 'Weekday' END AS day_type
-FROM gold.agg_negative_price_hours
+    CASE WHEN is_weekend_or_holiday THEN 'Weekend / holiday' ELSE 'Weekday' END AS day_type
+FROM gold.agg_market_hourly
 WHERE local_date >= add_months(current_date(), -12) AND renewable_share IS NOT NULL
 """,
     ),
@@ -114,10 +111,9 @@ WHERE local_date >= add_months(current_date(), -12) AND renewable_share IS NOT N
         """
 SELECT
     local_hour,
-    CASE WHEN is_weekend OR is_public_holiday_de THEN 'Weekend / holiday'
-         ELSE 'Weekday' END AS day_type,
+    CASE WHEN is_weekend_or_holiday THEN 'Weekend / holiday' ELSE 'Weekday' END AS day_type,
     round(avg(avg_price_eur_mwh), 1) AS avg_price_eur_mwh
-FROM gold.agg_negative_price_hours
+FROM gold.agg_market_hourly
 WHERE local_date >= add_months(current_date(), -12)
 GROUP BY 1, 2
 """,
@@ -126,10 +122,10 @@ GROUP BY 1, 2
         "Market figures this year",
         """
 SELECT
-    count_if(avg_price_eur_mwh < 0) AS negative_hours_this_year,
+    count_if(is_negative_hour) AS negative_hours_this_year,
     round(avg(avg_price_eur_mwh), 1) AS avg_price_this_year,
     round(min(min_price_eur_mwh), 1) AS lowest_price_this_year
-FROM gold.agg_negative_price_hours
+FROM gold.agg_market_hourly
 WHERE year(local_date) = year(current_date())
 """,
     ),
@@ -168,10 +164,9 @@ GROUP BY 1, 2
         """
 SELECT
     local_hour,
-    CASE WHEN is_weekend OR is_public_holiday_de THEN 'Weekend / holiday'
-         ELSE 'Weekday' END AS day_type,
+    CASE WHEN is_weekend_or_holiday THEN 'Weekend / holiday' ELSE 'Weekday' END AS day_type,
     round(avg(grid_load_mwh) / 1000, 1) AS avg_load_gw
-FROM gold.agg_negative_price_hours
+FROM gold.agg_market_hourly
 WHERE local_date >= add_months(current_date(), -12)
 GROUP BY 1, 2
 """,
@@ -339,7 +334,7 @@ PAGES = [
                 "kpi_min",
                 "market_kpis",
                 "lowest_price_this_year",
-                "Lowest hourly price this year (EUR/MWh)",
+                "Lowest quarter-hour price this year (EUR/MWh)",
                 (4, 0, 2, 3),
             ),
             chart(

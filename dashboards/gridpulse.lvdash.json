@@ -25,28 +25,28 @@
       "name": "negative_hours_monthly",
       "displayName": "Negative-price hours per month",
       "queryLines": [
-        "SELECT\n    date_trunc('MONTH', local_date) AS month,\n    count_if(avg_price_eur_mwh < 0) AS negative_price_hours\nFROM gold.agg_negative_price_hours\nGROUP BY 1\n"
+        "SELECT date_trunc('MONTH', local_date) AS month, count_if(is_negative_hour) AS negative_price_hours\nFROM gold.agg_market_hourly\nGROUP BY 1\n"
       ]
     },
     {
       "name": "price_vs_renewables",
       "displayName": "Hourly price vs renewable share, last 12 months",
       "queryLines": [
-        "SELECT\n    round(renewable_share * 100, 1) AS renewable_share_pct,\n    round(avg_price_eur_mwh, 1) AS price_eur_mwh,\n    CASE WHEN is_weekend OR is_public_holiday_de THEN 'Weekend / holiday'\n         ELSE 'Weekday' END AS day_type\nFROM gold.agg_negative_price_hours\nWHERE local_date >= add_months(current_date(), -12) AND renewable_share IS NOT NULL\n"
+        "SELECT\n    round(renewable_share * 100, 1) AS renewable_share_pct,\n    round(avg_price_eur_mwh, 1) AS price_eur_mwh,\n    CASE WHEN is_weekend_or_holiday THEN 'Weekend / holiday' ELSE 'Weekday' END AS day_type\nFROM gold.agg_market_hourly\nWHERE local_date >= add_months(current_date(), -12) AND renewable_share IS NOT NULL\n"
       ]
     },
     {
       "name": "price_profile",
       "displayName": "Average price by hour of day, last 12 months",
       "queryLines": [
-        "SELECT\n    local_hour,\n    CASE WHEN is_weekend OR is_public_holiday_de THEN 'Weekend / holiday'\n         ELSE 'Weekday' END AS day_type,\n    round(avg(avg_price_eur_mwh), 1) AS avg_price_eur_mwh\nFROM gold.agg_negative_price_hours\nWHERE local_date >= add_months(current_date(), -12)\nGROUP BY 1, 2\n"
+        "SELECT\n    local_hour,\n    CASE WHEN is_weekend_or_holiday THEN 'Weekend / holiday' ELSE 'Weekday' END AS day_type,\n    round(avg(avg_price_eur_mwh), 1) AS avg_price_eur_mwh\nFROM gold.agg_market_hourly\nWHERE local_date >= add_months(current_date(), -12)\nGROUP BY 1, 2\n"
       ]
     },
     {
       "name": "market_kpis",
       "displayName": "Market figures this year",
       "queryLines": [
-        "SELECT\n    count_if(avg_price_eur_mwh < 0) AS negative_hours_this_year,\n    round(avg(avg_price_eur_mwh), 1) AS avg_price_this_year,\n    round(min(min_price_eur_mwh), 1) AS lowest_price_this_year\nFROM gold.agg_negative_price_hours\nWHERE year(local_date) = year(current_date())\n"
+        "SELECT\n    count_if(is_negative_hour) AS negative_hours_this_year,\n    round(avg(avg_price_eur_mwh), 1) AS avg_price_this_year,\n    round(min(min_price_eur_mwh), 1) AS lowest_price_this_year\nFROM gold.agg_market_hourly\nWHERE year(local_date) = year(current_date())\n"
       ]
     },
     {
@@ -67,7 +67,7 @@
       "name": "grid_load_profile",
       "displayName": "German grid load by hour of day, last 12 months",
       "queryLines": [
-        "SELECT\n    local_hour,\n    CASE WHEN is_weekend OR is_public_holiday_de THEN 'Weekend / holiday'\n         ELSE 'Weekday' END AS day_type,\n    round(avg(grid_load_mwh) / 1000, 1) AS avg_load_gw\nFROM gold.agg_negative_price_hours\nWHERE local_date >= add_months(current_date(), -12)\nGROUP BY 1, 2\n"
+        "SELECT\n    local_hour,\n    CASE WHEN is_weekend_or_holiday THEN 'Weekend / holiday' ELSE 'Weekday' END AS day_type,\n    round(avg(grid_load_mwh) / 1000, 1) AS avg_load_gw\nFROM gold.agg_market_hourly\nWHERE local_date >= add_months(current_date(), -12)\nGROUP BY 1, 2\n"
       ]
     },
     {
@@ -530,12 +530,12 @@
               "encodings": {
                 "value": {
                   "fieldName": "lowest_price_this_year",
-                  "displayName": "Lowest hourly price this year (EUR/MWh)"
+                  "displayName": "Lowest quarter-hour price this year (EUR/MWh)"
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "Lowest hourly price this year (EUR/MWh)"
+                "title": "Lowest quarter-hour price this year (EUR/MWh)"
               }
             }
           },

@@ -28,12 +28,23 @@ DATASETS = {
         f"""
 SELECT
     from_utc_timestamp(event_ts_utc, 'Europe/Berlin') AS ts_local,
-    production_type,
-    round(power_mw / 1000, 2) AS power_gw
+    -- 16 energy-charts types grouped into 8, so every area gets its own colour
+    CASE
+        WHEN production_type ILIKE '%wind%' THEN 'Wind'
+        WHEN production_type ILIKE 'solar%' THEN 'Solar'
+        WHEN production_type ILIKE 'biomass%' THEN 'Biomass'
+        WHEN production_type ILIKE 'hydro%' THEN 'Hydro (incl. pumped storage)'
+        WHEN production_type ILIKE '%lignite%' THEN 'Lignite'
+        WHEN production_type ILIKE '%hard coal%' THEN 'Hard coal'
+        WHEN production_type ILIKE 'fossil gas%' THEN 'Gas'
+        ELSE 'Other (oil, waste, geothermal, ...)'
+    END AS source,
+    round(sum(power_mw) / 1000, 2) AS power_gw
 FROM silver.stream_energy_generation
 WHERE event_ts_utc >= (SELECT max(event_ts_utc) FROM silver.stream_energy_generation)
                       - INTERVAL 24 HOURS
   AND NOT ({NOT_GENERATION})
+GROUP BY 1, 2
 """,
     ),
     "live_kpis": (
@@ -260,8 +271,10 @@ PAGES = [
                 "live_intro",
                 [
                     "## Germany's power grid, live\n",
-                    "Public net generation from energy-charts (Fraunhofer ISE), streamed every "
-                    "few minutes; prices from SMARD; updated by the daily pipeline.",
+                    "Public net generation from energy-charts (Fraunhofer ISE), sent by the "
+                    "hourly producer; prices from SMARD. The lakehouse is refreshed daily and "
+                    "on every deploy, and energy-charts publishes about 2 hours late, so "
+                    "'now' means the latest quarter-hour loaded.",
                 ],
                 (0, 0, 6, 2),
             ),
@@ -280,7 +293,7 @@ PAGES = [
                 "kpi_latency",
                 "live_kpis",
                 "end_to_end_min",
-                "Stream latency p50, 7 days (min)",
+                "Producer to bronze, median 7 days (min)",
                 (3, 2, 1, 3),
             ),
             counter(
@@ -297,7 +310,7 @@ PAGES = [
                 "Generation mix, last 24 h (GW)",
                 ("ts_local", T, "Time (Berlin)"),
                 ("power_gw", Q, "GW"),
-                ("production_type", C, "Source"),
+                ("source", C, "Source"),
                 (0, 5, 6, 8),
             ),
             chart(

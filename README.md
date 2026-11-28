@@ -89,6 +89,14 @@ A three-page Databricks AI/BI dashboard, kept as code (`dashboards/build_dashboa
 
 ![Installed capacity per state](docs/img/dashboard_capacity.png)
 
+### Genie (questions in plain English)
+
+A Genie space over the gold tables, kept as code (`genie/space.py`) and created or updated through the Genie API on every deploy. A benchmark of 10 questions (`genie/evaluate.py`, manual workflow) asks Genie each one and compares its answer with reference SQL: **10/10 correct** (28 Nov 2026), e.g. 576 negative-price hours in 2025, 28.5 GW of solar in Bavaria at the end of 2025, 63.15 TWh of solar generation in 2024.
+
+It also knows the limits of the data: generation is national, only capacity is per state.
+
+![Genie answering a question the data can't answer directly](docs/img/genie_bavaria.png)
+
 ### Compute usage and cost
 
 From `ops.rpt_compute_usage_daily`, a dbt view over Databricks' system tables (`system.billing.usage`, `list_prices`, `system.lakeflow.*`). Free Edition bills nothing; the dollar figures are what the same usage would cost at **list price** on a paid plan.

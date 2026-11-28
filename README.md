@@ -73,6 +73,25 @@ From `ops.stream_metrics` (Kafka on Redpanda Serverless, measured 24 Nov 2026, p
 - **Source delay:** energy-charts publishes values about 2 hours after the quarter-hour they describe.
 - **Replays don't double-count:** a third replay of the same day added 2,304 messages to bronze and 0 new events to silver and gold.
 
+### Compute usage and cost
+
+From `ops.rpt_compute_usage_daily`, a dbt view over Databricks' system tables (`system.billing.usage`, `list_prices`, `system.lakeflow.*`). Free Edition bills nothing; the dollar figures are what the same usage would cost at **list price** on a paid plan.
+
+**November 2026 (build month), 70.5 DBU ≈ $34 at list price:**
+
+| Workload | DBU | List price |
+|---|---|---|
+| Dev daily job `gridpulse_refresh` (ingestion, checks, dbt) | 20.4 | $7.13 |
+| Dev pipeline `gridpulse_medallion` (bronze, silver, SCD2) | 18.6 | $6.52 |
+| SQL warehouse (dbt, CI builds, ad-hoc queries) | 20.4 | $14.27 |
+| Notebooks and predictive optimization | 8.2 | $4.61 |
+| Prod release runs (`v0.1.0`, `v0.1.1`) | 2.2 | $0.77 |
+| Forecast job, simulators, replays | 0.7 | $0.25 |
+
+- **Daily build days ran 10–14 DBU** (21–27 Nov: history backfills, full refreshes, many test runs and CI builds).
+- **Steady state is far lower:** a normal day is one scheduled refresh (pipeline + dbt) plus eight forecast runs; 28 Nov, with that run plus one deploy run, used 2.5 DBU. So running GridPulse costs roughly **1–2 DBU per day, about 30–60 DBU (~$12–25 at list price) per month**, to be confirmed with December's data.
+- **The SQL warehouse costs about twice as much per DBU as jobs compute** (~$0.70 vs ~$0.35). Slim CI (only changed models) and triggered pipelines instead of continuous ones are the main levers that keep it low.
+
 ## Data lineage (dbt)
 
 Silver tables (green) flow through staging views into the gold star schema and the answer tables:

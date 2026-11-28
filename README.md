@@ -73,6 +73,22 @@ From `ops.stream_metrics` (Kafka on Redpanda Serverless, measured 24 Nov 2026, p
 - **Source delay:** energy-charts publishes values about 2 hours after the quarter-hour they describe.
 - **Replays don't double-count:** a third replay of the same day added 2,304 messages to bronze and 0 new events to silver and gold.
 
+### Dashboard
+
+A three-page Databricks AI/BI dashboard, kept as code (`dashboards/build_dashboard.py`) and deployed by the bundle with every merge and release.
+
+**Live grid:** renewable share, generation and price now, stream latency, and the generation mix of the last 24 hours (live stream).
+
+![Live grid page](docs/img/dashboard_live.png)
+
+**Market:** prices fall as the renewable share rises; deeply negative prices only appear above ~88 % renewables, mostly on weekends and holidays. Weekday prices peak in the morning and evening; the midday solar dip is much deeper on weekends.
+
+![Price vs renewables and daily price profile](docs/img/dashboard_market.png)
+
+**Capacity and consumption:** installed wind and solar per state since 2020, the latest split by state, German grid load and London household load by hour.
+
+![Installed capacity per state](docs/img/dashboard_capacity.png)
+
 ### Compute usage and cost
 
 From `ops.rpt_compute_usage_daily`, a dbt view over Databricks' system tables (`system.billing.usage`, `list_prices`, `system.lakeflow.*`). Free Edition bills nothing; the dollar figures are what the same usage would cost at **list price** on a paid plan.

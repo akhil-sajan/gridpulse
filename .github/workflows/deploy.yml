@@ -41,6 +41,12 @@ jobs:
       - uses: databricks/setup-cli@main
       - name: Deploy dev
         run: databricks bundle deploy -t dev
+      - uses: actions/setup-python@v7
+        with: { python-version: "3.11", cache: pip, cache-dependency-path: requirements.txt }
+      - name: Genie space (dev)
+        run: |
+          pip install -r requirements.txt
+          python -m genie.deploy_space --catalog gridpulse_dev --title-prefix "[dev] "
       - name: Run gridpulse_refresh (dev)
         run: databricks bundle run bronze_refresh -t dev
 
@@ -53,6 +59,12 @@ jobs:
       - uses: databricks/setup-cli@main
       - name: Deploy prod (${{ github.ref_name }})
         run: databricks bundle deploy -t prod
+      - uses: actions/setup-python@v7
+        with: { python-version: "3.11", cache: pip, cache-dependency-path: requirements.txt }
+      - name: Genie space (prod)
+        run: |
+          pip install -r requirements.txt
+          python -m genie.deploy_space --catalog gridpulse_prod
       # The freshness check expects a recent forecast, so fetch one first.
       - name: Run gridpulse_forecast (prod)
         run: databricks bundle run forecast -t prod

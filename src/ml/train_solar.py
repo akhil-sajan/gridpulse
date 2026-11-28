@@ -65,7 +65,7 @@ def plot(test, model_mwh, baseline_mwh, path: str) -> None:
 
 
 def main() -> int:
-    df = spark.read.table(f"{catalog}.ml.features_solar_daily").toPandas()
+    df = solar.prepare(spark.read.table(f"{catalog}.ml.features_solar_daily").toPandas())
     train_df, test_df = solar.split(df)
     print(
         f"rows: {len(df)}  train: {len(train_df)} (to {solar.TRAIN_END.date()})  "

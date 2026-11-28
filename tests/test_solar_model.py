@@ -1,5 +1,7 @@
 """P6.4: split, baseline, model and metrics of the solar forecast (synthetic data)."""
 
+from decimal import Decimal
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -64,3 +66,14 @@ def test_model_beats_baseline_on_weather_driven_data():
 def test_score_skips_missing_and_zero_days():
     s = solar.score(pd.Series([100.0, 0.0, 50.0]), pd.Series([110.0, 5.0, None]))
     assert s.days == 1 and s.mae_mwh == 10 and s.mape_pct == 10
+
+
+def test_prepare_turns_spark_decimals_into_floats():
+    df = synthetic()
+    df["solar_capacity_mw"] = [Decimal(str(round(v, 1))) for v in df["solar_capacity_mw"]]
+    df["solar_capacity_factor"] = [Decimal(str(round(v, 4))) for v in df["solar_capacity_factor"]]
+    prepared = solar.prepare(df)
+    assert prepared["solar_capacity_mw"].dtype == "float64"
+    _, test = solar.split(prepared)
+    assert len(test) == 365
+    assert solar.baseline(prepared, test).notna().all()  # the job's crash: float * Decimal

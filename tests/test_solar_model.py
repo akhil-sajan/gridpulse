@@ -12,7 +12,7 @@ from src.ml import solar  # noqa: E402
 def synthetic(days: int = 6 * 365, seed: int = 0) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
     d = pd.date_range("2020-01-01", periods=days, freq="D")
-    doy = d.dayofyear.to_numpy()
+    doy = d.day_of_year.to_numpy()
     season = 0.5 + 0.5 * np.sin(2 * np.pi * (doy - 80) / 365.25)
     clouds = rng.uniform(0, 100, days)
     radiation = 6000 * season * (1 - clouds / 130) + rng.normal(0, 150, days)

@@ -42,6 +42,17 @@ PARAMS = {
 }
 
 
+def prepare(df: pd.DataFrame) -> pd.DataFrame:
+    """Spark returns rounded SQL numbers as decimal.Decimal; make every column except the
+    date a float, so pandas and scikit-learn can calculate with them."""
+    out = df.copy()
+    for col in out.columns:
+        if col != "local_date":
+            out[col] = pd.to_numeric(out[col], errors="raise").astype("float64")
+    out["local_date"] = pd.to_datetime(out["local_date"])
+    return out.sort_values("local_date").reset_index(drop=True)
+
+
 def split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Time-based split: train up to the end of 2024, test on 2025. No shuffling, so the
     model never sees a day from the period it is judged on."""

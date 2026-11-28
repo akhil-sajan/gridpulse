@@ -379,3 +379,12 @@ A running record of choices made while building GridPulse, and why.
 - **Only complete days:** all quarter-hours of solar generation (92/96/100 on DST days, from `dim_time`) and at least 23 hours of weather. So the table ends at the newest day with final Open-Meteo archive weather, a few days before today; forecasting uses the forecast weather instead (P6.5).
 - **Tests:** `not_null` on every column, unique days, value ranges, and a singular test that there are no missing days from 2020-01-01 to the newest day and that the newest day is at most 14 days old.
 - **Result (28 Nov 2026):** the PR's slim CI build created the table from the dev data and ran all 21 tests (unique days, `not_null` on every column, value ranges, no missing days since 2020-01-01, newest day at most 14 days old): **PASS=21**. The merge deployed it and the daily job now rebuilds it. Done.
+
+## P6.4 Train and track
+
+- **Target = capacity factor:** the model (scikit-learn `HistGradientBoostingRegressor`) predicts solar MWh / (capacity × 24 h) from the day's weather and season; the forecast in MWh is that factor × the capacity known before the day. Solar capacity more than doubled since 2020, so learning the factor separates the weather effect from the growth in panels. Gradient boosting from scikit-learn instead of LightGBM: no native library to install on serverless, and similar accuracy at ~2,000 rows.
+- **Baseline:** the same day last year, scaled by capacity (last year's capacity factor × today's capacity).
+- **Time-based split:** train on 2020–2024, test on 2025, never shuffled. Metrics on the test year: MAE and RMSE in MWh, MAPE in %; both models on exactly the same days.
+- **Tracking and registry:** MLflow experiment per catalog with parameters, metrics and a forecast-vs-actual plot; the model is registered in Unity Catalog as `<catalog>.ml.solar_forecast` (signature and input example included). The alias `champion` moves to a new version only if it beats the baseline **and** the current champion on MAPE; a model that loses to the baseline fails the run.
+- **Job, not schedule:** `gridpulse_ml_train` is started by hand (GitHub workflow or Jobs UI); weather-to-output relations change slowly, so monthly retraining is enough.
+- The pure logic (split, baseline, metrics) is in `src/ml/solar.py` and unit-tested with synthetic data; `train_solar.py` only wires Spark, MLflow and the registry.

@@ -1,0 +1,28 @@
+# P6.4: train, track (MLflow) and register (Unity Catalog) the daily solar forecast.
+# Started by hand (GitHub workflow "Train solar model" or the Jobs UI); retraining once
+# a month is enough for a model that maps weather to a capacity factor.
+resources:
+  jobs:
+    ml_train:
+      name: gridpulse_ml_train
+      max_concurrent_runs: 1
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      environments:
+        - environment_key: ml
+          spec:
+            environment_version: "2"
+            dependencies:
+              - mlflow>=3.1,<4
+              - scikit-learn>=1.4,<2
+              - matplotlib>=3.8
+      tasks:
+        - task_key: train_solar
+          environment_key: ml
+          timeout_seconds: 1800
+          spark_python_task:
+            python_file: ../src/ml/train_solar.py
+            parameters:
+              - ${workspace.file_path}
+              - ${var.catalog}

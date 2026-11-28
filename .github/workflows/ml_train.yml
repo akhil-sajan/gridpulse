@@ -1,0 +1,29 @@
+name: Train solar model (manual)
+
+# P6.4: runs the gridpulse_ml_train job (already deployed by the Deploy workflow) and
+# prints its result: test metrics of baseline and model, and whether it became champion.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        type: choice
+        options: [dev, prod]
+        default: dev
+
+permissions:
+  contents: read
+
+env:
+  DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+  DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: databricks/setup-cli@main
+      - name: Run gridpulse_ml_train (${{ inputs.target }})
+        run: databricks bundle run ml_train -t ${{ inputs.target }}

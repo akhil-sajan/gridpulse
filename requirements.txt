@@ -1,7 +1,7 @@
 # Runtime dependencies for the ingestion scripts (GitHub Actions and local runs).
 requests>=2.32,<3
 pyyaml>=6,<7
-databricks-sdk>=0.40
+databricks-sdk>=0.150  # Genie space API (P6.2)
 pg8000>=1.31,<2
 kafka-python>=3,<4
 fastjsonschema>=2.19,<3

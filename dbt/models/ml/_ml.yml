@@ -1,0 +1,60 @@
+version: 2
+
+models:
+  - name: features_solar_daily
+    description: >
+      Features for the daily national solar forecast (P6.3), one row per complete German
+      local day from 2020-01-01: capacity-weighted national weather (radiation, cloud
+      cover, temperature), season, installed solar capacity at the end of the previous
+      month, and the target solar_mwh (with solar_capacity_factor = solar_mwh / (capacity
+      x 24 h)).
+    columns:
+      - name: local_date
+        description: German local day (Europe/Berlin).
+        data_tests: [unique, not_null]
+      - name: day_of_year
+        data_tests: [not_null]
+      - name: day_of_year_sin
+        data_tests: [not_null]
+      - name: day_of_year_cos
+        data_tests: [not_null]
+      - name: radiation_wh_m2
+        description: Shortwave radiation over the day (Wh/m2), weighted by solar capacity per state.
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 10000
+      - name: radiation_peak_w_m2
+        data_tests: [not_null]
+      - name: cloud_cover_pct
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 100
+      - name: cloud_cover_daylight_pct
+        description: Mean cloud cover over the hours with sunlight.
+        data_tests: [not_null]
+      - name: daylight_hours
+        data_tests: [not_null]
+      - name: temperature_c
+        data_tests: [not_null]
+      - name: solar_capacity_mw
+        description: Installed solar capacity at the end of the previous month (MW).
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 1
+      - name: solar_mwh
+        description: Target. National solar generation that day (MWh).
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+      - name: solar_capacity_factor
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 1
